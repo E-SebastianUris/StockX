@@ -1,8 +1,39 @@
-﻿node_modules/
-venv/
-__pycache__/
-*.pyc
-.env
-db.sqlite3
-dist/
+﻿@"
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+frontend/*.log
+frontend/npm-debug.log*
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.egg-info/
+backend/.pytest_cache/
+backend/db.sqlite3
+backend/.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+
+# Env
+.env
+.env.local
+"@ | Out-File .gitignore -Encoding utf8
