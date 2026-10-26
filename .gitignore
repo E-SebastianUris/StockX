@@ -1,4 +1,5 @@
-﻿# Node
+
+# Node
 frontend/node_modules/
 frontend/dist/
 frontend/.env.local
@@ -10,6 +11,7 @@ frontend/npm-debug.log*
 backend/venv/
 backend/.venv/
 backend/__pycache__/
+backend/**/__pycache__/
 backend/*.pyc
 backend/*.pyo
 backend/*.egg-info/
@@ -35,6 +37,3 @@ build/
 # Env
 .env
 .env.local
-
-# Python cache directories
-backend/**/__pycache__/
