@@ -1,11 +1,3 @@
-# StockX — Diccionario de Datos y Modelo Relacional
-**Tecnicatura Universitaria en Programación — UTN Facultad Regional La Plata**  
-**Trabajo Final Integrador (TFI) — 2° Cuatrimestre 2026**  
-**Responsable del Módulo de Base de Datos:** Melany Besguro  
-**Motor de Base de Datos:** PostgreSQL 13+
-
----
-
 ## 1. Diagrama Entidad-Relación (DER)
 
 ```mermaid
@@ -18,6 +10,7 @@ erDiagram
     PRODUCTOS ||--o{ MOVIMIENTOS_STOCK : "tiene (1:N)"
     PRODUCTOS ||--o{ DETALLES_VENTAS : "se incluye en (N:1)"
     VENTAS ||--|{ DETALLES_VENTAS : "contiene (1:N)"
+    VENTAS ||--o{ MOVIMIENTOS_STOCK : "origina (1:N)"
 
     USUARIOS {
         bigserial id PK
@@ -70,12 +63,13 @@ erDiagram
     MOVIMIENTOS_STOCK {
         bigserial id PK
         bigint producto_id FK
-        varchar tipo "INGRESO | EGRESO | AJUSTE"
+        varchar tipo "INGRESO | EGRESO | AJUSTE | VENTA"
         integer cantidad
         integer stock_previo
         integer stock_posterior
         date fecha_vencimiento_asociada
         bigint usuario_id FK
+        bigint venta_id FK
         timestamp fecha_movimiento
     }
 
@@ -84,7 +78,7 @@ erDiagram
         timestamp fecha_venta
         numeric total
         bigint vendedor_id FK
-        varchar metodo_pago "EFECTIVO | TRANSFERENCIA | DEBITO | CREDITO"
+        varchar metodo_pago "EFECTIVO | TRANSFERENCIA | DEBITO | CREDITO | OTRO"
     }
 
     DETALLES_VENTAS {
@@ -102,22 +96,22 @@ erDiagram
 ## 2. Diccionario de Datos
 
 ### 2.1 Tabla: `usuarios`
-Almacena las cuentas de usuario y los roles del sistema (Admin y Vendedor).
+Estructura representativa para la gestión de usuarios y roles del comercio, orientada a la compatibilidad con Django Auth.
 
 | Columna | Tipo de Dato | Nulo | Restricciones / Defecto | Descripción |
 |---|---|---|---|---|
 | `id` | BIGSERIAL | NO | PK | Identificador único del usuario |
 | `username` | VARCHAR(150) | NO | UNIQUE | Nombre de usuario para iniciar sesión |
-| `password` | VARCHAR(128) | NO | - | Hash de contraseña |
-| `rol` | VARCHAR(20) | NO | DEFAULT 'VENDEDOR', CHECK (rol IN ('ADMIN', 'VENDEDOR')) | Rol de acceso |
+| `password` | VARCHAR(128) | NO | - | Hash de contraseña gestionado por Django |
+| `rol` | VARCHAR(20) | NO | DEFAULT 'VENDEDOR', CHECK (rol IN ('ADMIN', 'VENDEDOR')) | Rol de acceso del usuario |
 | `telefono` | VARCHAR(30) | SÍ | - | Teléfono de contacto |
 | `first_name` | VARCHAR(150) | NO | DEFAULT '' | Nombre de la persona |
 | `last_name` | VARCHAR(150) | NO | DEFAULT '' | Apellido de la persona |
 | `email` | VARCHAR(254) | NO | DEFAULT '' | Correo electrónico |
-| `is_staff` | BOOLEAN | NO | DEFAULT FALSE | Acceso administrativo |
-| `is_superuser` | BOOLEAN | NO | DEFAULT FALSE | Superusuario del sistema |
-| `is_active` | BOOLEAN | NO | DEFAULT TRUE | Estado de la cuenta |
-| `date_joined` | TIMESTAMP TZ | NO | DEFAULT CURRENT_TIMESTAMP | Fecha de alta |
+| `is_staff` | BOOLEAN | NO | DEFAULT FALSE | Permiso de administración básica |
+| `is_superuser` | BOOLEAN | NO | DEFAULT FALSE | Superusuario |
+| `is_active` | BOOLEAN | NO | DEFAULT TRUE | Estado de la cuenta (activo/inactivo) |
+| `date_joined` | TIMESTAMP TZ | NO | DEFAULT CURRENT_TIMESTAMP | Fecha de alta en el sistema |
 
 ---
 
@@ -195,25 +189,7 @@ Tabla intermedia que relaciona productos con sus múltiples distribuidores.
 
 ---
 
-### 2.6 Tabla: `movimientos_stock` (Trazabilidad 1:N)
-Registro inmutable de entradas, salidas y ajustes de mercadería.
-
-| Columna | Tipo de Dato | Nulo | Restricciones / Defecto | Descripción |
-|---|---|---|---|---|
-| `id` | BIGSERIAL | NO | PK | Identificador único |
-| `producto_id` | BIGINT | NO | FK -> `productos(id)` ON DELETE RESTRICT | Producto afectado |
-| `tipo` | VARCHAR(20) | NO | CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE')) | Tipo de operación |
-| `cantidad` | INTEGER | NO | - | Cantidad movida |
-| `stock_previo` | INTEGER | NO | - | Stock antes del movimiento |
-| `stock_posterior`| INTEGER | NO | - | Stock resultante |
-| `motivo` | VARCHAR(255) | SÍ | - | Causa (Compra, Rotura, Vencimiento, etc.) |
-| `fecha_vencimiento_asociada` | DATE | SÍ | - | Vencimiento informado en el ingreso |
-| `usuario_id` | BIGINT | NO | FK -> `usuarios(id)` ON DELETE RESTRICT | Responsable que ejecutó la acción |
-| `fecha_movimiento` | TIMESTAMP TZ | NO | DEFAULT CURRENT_TIMESTAMP, INDEX | Fecha y hora exacta |
-
----
-
-### 2.7 Tabla: `ventas`
+### 2.6 Tabla: `ventas`
 Encabezado transaccional de ventas realizadas en mostrador.
 
 | Columna | Tipo de Dato | Nulo | Restricciones / Defecto | Descripción |
@@ -227,7 +203,7 @@ Encabezado transaccional de ventas realizadas en mostrador.
 
 ---
 
-### 2.8 Tabla: `detalles_ventas`
+### 2.7 Tabla: `detalles_ventas`
 Renglones o ítems incluidos en cada venta.
 
 | Columna | Tipo de Dato | Nulo | Restricciones / Defecto | Descripción |
@@ -239,9 +215,31 @@ Renglones o ítems incluidos en cada venta.
 | `precio_unitario` | NUMERIC(12,2)| NO | CHECK (>= 0) | Precio unitario al momento de la venta |
 | `subtotal` | NUMERIC(12,2)| NO | CHECK (>= 0) | Total del ítem (`cantidad * precio_unitario`) |
 
+*Restricción de Integridad:*
+- `unique_venta_producto`: `UNIQUE(venta_id, producto_id)` para evitar renglones duplicados del mismo producto en una misma venta.
+
 ---
 
-## 3. Vistas Especializadas (Reportes y Alertas)
+### 2.8 Tabla: `movimientos_stock` (Trazabilidad 1:N)
+Registro inmutable de entradas, salidas, ajustes y ventas de mercadería.
+
+| Columna | Tipo de Dato | Nulo | Restricciones / Defecto | Descripción |
+|---|---|---|---|---|
+| `id` | BIGSERIAL | NO | PK | Identificador único |
+| `producto_id` | BIGINT | NO | FK -> `productos(id)` ON DELETE RESTRICT | Producto afectado |
+| `tipo` | VARCHAR(20) | NO | CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE', 'VENTA')) | Tipo de operación |
+| `cantidad` | INTEGER | NO | CHECK (cantidad <> 0) | Cantidad movida |
+| `stock_previo` | INTEGER | NO | CHECK (stock_previo >= 0) | Stock antes del movimiento |
+| `stock_posterior`| INTEGER | NO | CHECK (stock_posterior >= 0) | Stock resultante tras la operación |
+| `motivo` | VARCHAR(255) | SÍ | - | Causa (Compra, Rotura, Vencimiento, Venta mostrador) |
+| `fecha_vencimiento_asociada` | DATE | SÍ | - | Vencimiento informado en el ingreso |
+| `usuario_id` | BIGINT | SÍ | FK -> `usuarios(id)` ON DELETE RESTRICT | Responsable que ejecutó la acción |
+| `venta_id` | BIGINT | SÍ | FK -> `ventas(id)` ON DELETE SET NULL | Venta vinculada cuando tipo = 'VENTA' |
+| `fecha_movimiento` | TIMESTAMP TZ | NO | DEFAULT CURRENT_TIMESTAMP, INDEX | Fecha y hora exacta |
+
+---
+
+## 3. Vistas de Consulta (Lectura pura)
 
 1. **`vista_alertas_stock_minimo`**: Identifica productos donde `stock_actual <= stock_minimo` categorizados en niveles (`CRITICO`, `BAJO`, `SIN STOCK`).
 2. **`vista_alertas_vencimiento`**: Filtra productos próximos a caducar en 15 días o menos (`URGENTE`, `PROXIMO`, `VENCIDO`).

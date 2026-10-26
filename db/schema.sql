@@ -1,13 +1,5 @@
--- ==============================================================================
--- StockX - Sistema de Gestión de Inventario y Stock para Kioscos
--- Módulo: Base de Datos PostgreSQL
--- Responsable: Melany Besguro
--- ==============================================================================
-
--- 1. EXTENSIONES
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 2. TABLA: USUARIOS (Gestión de Roles Admin / Vendedor)
+-- 1. TABLA: USUARIOS (Gestión de Roles Admin / Vendedor)
+-- Nota para integración: Coordinar nombres de columnas con el modelo User / AbstractUser de Django
 CREATE TABLE IF NOT EXISTS usuarios (
     id BIGSERIAL PRIMARY KEY,
     password VARCHAR(128) NOT NULL,
@@ -24,7 +16,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     telefono VARCHAR(30) NULL
 );
 
--- 3. TABLA: CATEGORIAS
+-- 2. TABLA: CATEGORIAS
 CREATE TABLE IF NOT EXISTS categorias (
     id BIGSERIAL PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL UNIQUE,
@@ -34,7 +26,7 @@ CREATE TABLE IF NOT EXISTS categorias (
     actualizado_el TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. TABLA: PROVEEDORES
+-- 3. TABLA: PROVEEDORES
 CREATE TABLE IF NOT EXISTS proveedores (
     id BIGSERIAL PRIMARY KEY,
     nombre VARCHAR(150) NOT NULL,
@@ -48,7 +40,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
     actualizado_el TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. TABLA: PRODUCTOS (Control simplificado de stock y vencimiento)
+-- 4. TABLA: PRODUCTOS (Control simplificado de stock y vencimiento)
 CREATE TABLE IF NOT EXISTS productos (
     id BIGSERIAL PRIMARY KEY,
     codigo_barra VARCHAR(64) NULL UNIQUE,
@@ -65,7 +57,7 @@ CREATE TABLE IF NOT EXISTS productos (
     actualizado_el TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. TABLA INTERMEDIA M:N: PRODUCTOS <-> PROVEEDORES
+-- 5. TABLA INTERMEDIA M:N: PRODUCTOS <-> PROVEEDORES
 CREATE TABLE IF NOT EXISTS productos_proveedores (
     id BIGSERIAL PRIMARY KEY,
     producto_id BIGINT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
@@ -76,21 +68,7 @@ CREATE TABLE IF NOT EXISTS productos_proveedores (
     CONSTRAINT unique_producto_proveedor UNIQUE (producto_id, proveedor_id)
 );
 
--- 7. TABLA: MOVIMIENTOS DE STOCK (1:N con Producto y trazabilidad por usuario)
-CREATE TABLE IF NOT EXISTS movimientos_stock (
-    id BIGSERIAL PRIMARY KEY,
-    producto_id BIGINT NOT NULL REFERENCES productos(id) ON DELETE RESTRICT,
-    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE')),
-    cantidad INTEGER NOT NULL,
-    stock_previo INTEGER NOT NULL,
-    stock_posterior INTEGER NOT NULL,
-    motivo VARCHAR(255) NULL,
-    fecha_vencimiento_asociada DATE NULL,
-    usuario_id BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
-    fecha_movimiento TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- 8. TABLA: VENTAS
+-- 6. TABLA: VENTAS (Encabezado transaccional)
 CREATE TABLE IF NOT EXISTS ventas (
     id BIGSERIAL PRIMARY KEY,
     fecha_venta TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -100,14 +78,31 @@ CREATE TABLE IF NOT EXISTS ventas (
     observaciones VARCHAR(255) NULL
 );
 
--- 9. TABLA: DETALLES DE VENTAS (1:N con Venta, N:1 con Producto)
+-- 7. TABLA: DETALLES DE VENTAS (1:N con Venta, N:1 con Producto)
 CREATE TABLE IF NOT EXISTS detalles_ventas (
     id BIGSERIAL PRIMARY KEY,
     venta_id BIGINT NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
     producto_id BIGINT NOT NULL REFERENCES productos(id) ON DELETE RESTRICT,
     cantidad INTEGER NOT NULL CHECK (cantidad > 0),
     precio_unitario NUMERIC(12, 2) NOT NULL CHECK (precio_unitario >= 0),
-    subtotal NUMERIC(12, 2) NOT NULL CHECK (subtotal >= 0)
+    subtotal NUMERIC(12, 2) NOT NULL CHECK (subtotal >= 0),
+    CONSTRAINT unique_venta_producto UNIQUE (venta_id, producto_id)
+);
+
+-- 8. TABLA: MOVIMIENTOS DE STOCK (1:N con Producto y trazabilidad completa)
+-- Tipos: INGRESO (+), EGRESO (-), AJUSTE (+/-), VENTA (-)
+CREATE TABLE IF NOT EXISTS movimientos_stock (
+    id BIGSERIAL PRIMARY KEY,
+    producto_id BIGINT NOT NULL REFERENCES productos(id) ON DELETE RESTRICT,
+    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE', 'VENTA')),
+    cantidad INTEGER NOT NULL CHECK (cantidad <> 0),
+    stock_previo INTEGER NOT NULL CHECK (stock_previo >= 0),
+    stock_posterior INTEGER NOT NULL CHECK (stock_posterior >= 0),
+    motivo VARCHAR(255) NULL,
+    fecha_vencimiento_asociada DATE NULL,
+    usuario_id BIGINT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    venta_id BIGINT NULL REFERENCES ventas(id) ON DELETE SET NULL,
+    fecha_movimiento TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ==============================================================================
@@ -123,6 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_mov_producto ON movimientos_stock(producto_id);
 CREATE INDEX IF NOT EXISTS idx_mov_fecha ON movimientos_stock(fecha_movimiento DESC);
 CREATE INDEX IF NOT EXISTS idx_mov_prod_fecha ON movimientos_stock(producto_id, fecha_movimiento DESC);
 CREATE INDEX IF NOT EXISTS idx_mov_usuario ON movimientos_stock(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_mov_venta ON movimientos_stock(venta_id);
 
 CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha_venta DESC);
 CREATE INDEX IF NOT EXISTS idx_ventas_fecha_vend ON ventas(fecha_venta, vendedor_id);
