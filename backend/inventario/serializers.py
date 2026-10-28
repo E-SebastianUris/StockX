@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from .models import Categoria, Proveedor, Producto, ProductoProveedor
 
@@ -66,3 +68,9 @@ class ProductoDetailSerializer(serializers.ModelSerializer):
             'creado_el', 'actualizado_el',
         )
         read_only_fields = ('id', 'creado_el', 'actualizado_el')
+        extra_kwargs = {
+            'precio_costo': {'min_value': Decimal('0')},
+            'precio_venta': {'min_value': Decimal('0')},
+            'stock_actual': {'min_value': 0},
+            'stock_minimo': {'min_value': 0},
+        }

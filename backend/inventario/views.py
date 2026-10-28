@@ -1,9 +1,10 @@
+from django.db.models.deletion import RestrictedError
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 
 from .models import Categoria, Proveedor, Producto
+from .permissions import HasInventarioRolePermission
 from .serializers import (
     CategoriaSerializer,
     ProveedorSerializer,
@@ -16,7 +17,7 @@ class CategoriaViewSet(viewsets.ModelViewSet):
     """CRUD de categorías. Solo ADMIN puede crear/editar/eliminar."""
     queryset = Categoria.objects.all().order_by('nombre')
     serializer_class = CategoriaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasInventarioRolePermission]
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre']
 
@@ -27,12 +28,23 @@ class CategoriaViewSet(viewsets.ModelViewSet):
             qs = qs.filter(activo=activo.lower() == 'true')
         return qs
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except RestrictedError:
+            return Response(
+                {'detail': 'No se puede eliminar una categoría que tiene productos asociados.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ProveedorViewSet(viewsets.ModelViewSet):
     """CRUD de proveedores."""
     queryset = Proveedor.objects.all().order_by('nombre')
     serializer_class = ProveedorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasInventarioRolePermission]
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre', 'cuit']
 
@@ -50,7 +62,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
     Listado usa ProductoListSerializer (liviano).
     Detalle usa ProductoDetailSerializer (anidado completo).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasInventarioRolePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nombre', 'codigo_barra']
     ordering_fields = ['nombre', 'precio_venta', 'stock_actual', 'fecha_vencimiento']
