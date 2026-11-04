@@ -1,4 +1,3 @@
-
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import path, include
@@ -21,5 +20,5 @@ urlpatterns = [
     path('api/health/', healthcheck, name='healthcheck'),
     path('api/auth/', include('authentication.urls')),
     path('api/inventario/', include('inventario.urls')),
-    
+    path('api/ventas/', include('ventas.urls')),
 ]
