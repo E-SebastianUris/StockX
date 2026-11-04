@@ -112,16 +112,14 @@ class VentaCreateSerializer(serializers.Serializer):
                 subtotal = precio_unitario * cantidad
                 total_venta += subtotal
 
-                stock_previo = prod.stock_actual
-                stock_posterior = stock_previo - cantidad
+                stock_final = prod.stock_actual - cantidad
 
                 items_a_procesar.append({
                     'producto': prod,
                     'cantidad': cantidad,
                     'precio_unitario': precio_unitario,
                     'subtotal': subtotal,
-                    'stock_previo': stock_previo,
-                    'stock_posterior': stock_posterior,
+                    'stock_final': stock_final,
                 })
 
             # Crear cabecera de la venta
@@ -140,7 +138,7 @@ class VentaCreateSerializer(serializers.Serializer):
                 cantidad = item['cantidad']
 
                 # Descontar stock
-                prod.stock_actual = item['stock_posterior']
+                prod.stock_actual = item['stock_final']
                 prod.save(update_fields=['stock_actual', 'actualizado_el'])
 
                 detalles_instances.append(
@@ -157,9 +155,7 @@ class VentaCreateSerializer(serializers.Serializer):
                     MovimientoStock(
                         producto=prod,
                         tipo='VENTA',
-                        cantidad=-cantidad,  # egreso por venta
-                        stock_previo=item['stock_previo'],
-                        stock_posterior=item['stock_posterior'],
+                        cantidad=-cantidad,
                         motivo=f'Venta #{venta.id}',
                         usuario=vendedor,
                         venta=venta,
@@ -184,8 +180,6 @@ class MovimientoStockSerializer(serializers.ModelSerializer):
             'producto_nombre',
             'tipo',
             'cantidad',
-            'stock_previo',
-            'stock_posterior',
             'motivo',
             'fecha_vencimiento_asociada',
             'usuario',
@@ -232,30 +226,29 @@ class MovimientoStockCreateSerializer(serializers.Serializer):
             except Producto.DoesNotExist:
                 raise serializers.ValidationError({'producto_id': f'El producto {producto_id} no existe.'})
 
-            stock_previo = producto.stock_actual
+            stock_actual = producto.stock_actual
 
             if tipo == 'INGRESO':
                 delta = cantidad_input
-                stock_posterior = stock_previo + delta
+                stock_nuevo = stock_actual + delta
                 cantidad_movimiento = delta
             elif tipo == 'EGRESO':
                 delta = cantidad_input
-                if stock_previo < delta:
+                if stock_actual < delta:
                     raise serializers.ValidationError(
-                        {'cantidad': f'Stock insuficiente para egreso. Stock actual: {stock_previo}, solicitado: {delta}.'}
+                        {'cantidad': f'Stock insuficiente para egreso. Stock actual: {stock_actual}, solicitado: {delta}.'}
                     )
-                stock_posterior = stock_previo - delta
+                stock_nuevo = stock_actual - delta
                 cantidad_movimiento = -delta
             elif tipo == 'AJUSTE':
-                # AJUSTE permite correcciones positivas o negativas
                 delta = cantidad_input
-                stock_posterior = stock_previo + delta
-                if stock_posterior < 0:
+                stock_nuevo = stock_actual + delta
+                if stock_nuevo < 0:
                     raise serializers.ValidationError(
                         {
                             'cantidad': (
-                                f'El ajuste solicitado provocaría un stock negativo ({stock_posterior}). '
-                                f'Stock actual: {stock_previo}.'
+                                f'El ajuste solicitado provocaría un stock negativo ({stock_nuevo}). '
+                                f'Stock actual: {stock_actual}.'
                             )
                         }
                     )
@@ -263,21 +256,17 @@ class MovimientoStockCreateSerializer(serializers.Serializer):
             else:
                 raise serializers.ValidationError({'tipo': f'Tipo no permitido para registro manual: {tipo}.'})
 
-            # Actualizar stock en el producto
-            producto.stock_actual = stock_posterior
+            producto.stock_actual = stock_nuevo
             if fecha_vencimiento:
                 producto.fecha_vencimiento = fecha_vencimiento
                 producto.save(update_fields=['stock_actual', 'fecha_vencimiento', 'actualizado_el'])
             else:
                 producto.save(update_fields=['stock_actual', 'actualizado_el'])
 
-            # Registrar movimiento
             movimiento = MovimientoStock.objects.create(
                 producto=producto,
                 tipo=tipo,
                 cantidad=cantidad_movimiento,
-                stock_previo=stock_previo,
-                stock_posterior=stock_posterior,
                 motivo=motivo,
                 fecha_vencimiento_asociada=fecha_vencimiento,
                 usuario=usuario,

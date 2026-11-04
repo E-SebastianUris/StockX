@@ -17,6 +17,6 @@ class VentaAdmin(admin.ModelAdmin):
 
 @admin.register(MovimientoStock)
 class MovimientoStockAdmin(admin.ModelAdmin):
-    list_display = ('id', 'fecha_movimiento', 'producto', 'tipo', 'cantidad', 'stock_previo', 'stock_posterior', 'usuario')
+    list_display = ('id', 'fecha_movimiento', 'producto', 'tipo', 'cantidad', 'usuario')
     list_filter = ('tipo', 'fecha_movimiento')
     search_fields = ('producto__nombre', 'usuario__username')

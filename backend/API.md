@@ -20,7 +20,7 @@ Cada recurso dispone de listado y alta con `GET` y `POST` en su ruta base, y de 
 
 - Categoría: `nombre` es obligatorio; admite `descripcion` y `activo`.
 - Proveedor: `nombre` es obligatorio; admite `contacto`, `telefono`, `email`, `direccion`, `cuit` y `activo`. `email` se valida y `cuit` es único cuando se informa.
-- Producto: `nombre`, `categoria_id` y `precio_venta` son obligatorios. Admite `codigo_barra`, `descripcion`, `precio_costo`, `stock_actual`, `stock_minimo`, `fecha_vencimiento` y `activo`. Precios y stocks no pueden ser negativos.
+- Producto: `nombre`, `categoria_id` y `precio_venta` son obligatorios. Admite `codigo_barra`, `descripcion`, `stock_actual`, `stock_minimo`, `fecha_vencimiento` y `activo`. El precio de costo se deriva de la última compra registrada para el producto y puede quedar `null` si aún no hubo compras.
 
 El detalle de producto incluye `producto_proveedores` como información de solo lectura. No hay una ruta para crear o eliminar asociaciones producto–proveedor en esta iteración.
 
@@ -69,7 +69,7 @@ Rutas:
 - El precio unitario de cada detalle se toma automáticamente del `precio_venta` vigente del producto.
 - Valida que haya stock suficiente para todos los productos de la venta antes de confirmar.
 - Descuenta el `stock_actual` en cada producto.
-- Genera automáticamente un `MovimientoStock` de tipo `VENTA` por cada producto involucrado, con `stock_previo` y `stock_posterior`, asociado al usuario autenticado y a la venta creada.
+- Genera automáticamente un `MovimientoStock` de tipo `VENTA` por cada producto involucrado, asociado al usuario autenticado y a la venta creada, y actualiza el `stock_actual` del producto.
 - Manejo atómico y concurrente con `transaction.atomic()` y `select_for_update()`: si cualquier producto no tiene stock suficiente o falla una validación, la operación completa se revierte sin dejar registros parciales.
 
 **Respuesta (`201 Created`):**
@@ -135,11 +135,11 @@ Rutas:
 ```
 
 **Reglas de negocio:**
-- `INGRESO`: `cantidad` positiva (> 0). Incrementa el stock (`stock_posterior = stock_previo + cantidad`).
-- `EGRESO`: `cantidad` positiva (> 0). Descuenta el stock (`stock_posterior = stock_previo - cantidad`). Falla con `400` si `stock_previo < cantidad`.
-- `AJUSTE`: `cantidad` distinta de cero (`!= 0`). Permite sumar (positiva) o restar (negativa). Falla con `400` si el stock resultante fuese menor a cero (`stock_previo + cantidad < 0`).
+- `INGRESO`: `cantidad` positiva (> 0). Incrementa el `stock_actual` del producto.
+- `EGRESO`: `cantidad` positiva (> 0). Descuenta el `stock_actual` del producto. Falla con `400` si el stock disponible es menor a la cantidad solicitada.
+- `AJUSTE`: `cantidad` distinta de cero (`!= 0`). Permite sumar (positiva) o restar (negativa). Falla con `400` si el stock resultante fuese menor a cero.
 - Si se informa `fecha_vencimiento_asociada`, actualiza además la fecha de vencimiento del producto.
-- En todos los casos registra `stock_previo`, `stock_posterior`, usuario que ejecutó la operación y fecha.
+- En todos los casos registra el usuario que ejecutó la operación, la fecha del movimiento y la cantidad con signo según el ajuste del stock.
 - Operación ejecutada bajo transacción con bloqueo sobre el producto (`select_for_update`).
 
 ---

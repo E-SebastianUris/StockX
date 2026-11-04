@@ -126,6 +126,8 @@ class InventarioRolePermissionsTests(APITestCase):
             producto=self.producto,
             proveedor=self.proveedor,
             codigo_articulo_proveedor='AGUA-001',
+            cantidad_compra=10,
+            fecha_compra='2026-10-01',
             precio_compra='50.00',
         )
         self.authenticate(self.admin)

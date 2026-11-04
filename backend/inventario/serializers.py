@@ -26,7 +26,12 @@ class ProductoProveedorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductoProveedor
-        fields = ('id', 'proveedor', 'proveedor_id', 'codigo_articulo_proveedor', 'precio_compra', 'creado_el')
+        fields = (
+            'id', 'proveedor', 'proveedor_id',
+            'codigo_articulo_proveedor',
+            'cantidad_compra', 'fecha_compra', 'precio_compra',
+            'creado_el',
+        )
         read_only_fields = ('id', 'creado_el')
 
 
@@ -52,6 +57,7 @@ class ProductoDetailSerializer(serializers.ModelSerializer):
         queryset=Categoria.objects.all(), source='categoria', write_only=True
     )
     producto_proveedores = ProductoProveedorSerializer(many=True, read_only=True)
+    precio_costo = serializers.SerializerMethodField()
     en_alerta_stock = serializers.BooleanField(read_only=True)
     sin_stock = serializers.BooleanField(read_only=True)
 
@@ -67,10 +73,12 @@ class ProductoDetailSerializer(serializers.ModelSerializer):
             'producto_proveedores',
             'creado_el', 'actualizado_el',
         )
-        read_only_fields = ('id', 'creado_el', 'actualizado_el')
+        read_only_fields = ('id', 'creado_el', 'actualizado_el', 'precio_costo')
         extra_kwargs = {
-            'precio_costo': {'min_value': Decimal('0')},
             'precio_venta': {'min_value': Decimal('0')},
             'stock_actual': {'min_value': 0},
             'stock_minimo': {'min_value': 0},
         }
+
+    def get_precio_costo(self, obj):
+        return obj.precio_costo

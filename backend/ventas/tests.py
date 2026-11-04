@@ -25,7 +25,6 @@ class VentasYMovimientosTests(APITestCase):
         self.producto_a = Producto.objects.create(
             nombre='Alfajor Chocolate',
             categoria=self.categoria,
-            precio_costo=Decimal('50.00'),
             precio_venta=Decimal('100.00'),
             stock_actual=20,
             stock_minimo=5,
@@ -34,7 +33,6 @@ class VentasYMovimientosTests(APITestCase):
         self.producto_b = Producto.objects.create(
             nombre='Caramelos Menta',
             categoria=self.categoria,
-            precio_costo=Decimal('10.00'),
             precio_venta=Decimal('25.50'),
             stock_actual=10,
             stock_minimo=2,
@@ -66,8 +64,6 @@ class VentasYMovimientosTests(APITestCase):
         mov = MovimientoStock.objects.get(id=res.data['id'])
         self.assertEqual(mov.tipo, 'INGRESO')
         self.assertEqual(mov.cantidad, 15)
-        self.assertEqual(mov.stock_previo, 20)
-        self.assertEqual(mov.stock_posterior, 35)
         self.assertEqual(mov.usuario, self.admin)
 
     def test_egreso_de_stock(self):
@@ -88,8 +84,6 @@ class VentasYMovimientosTests(APITestCase):
         mov = MovimientoStock.objects.get(id=res.data['id'])
         self.assertEqual(mov.tipo, 'EGRESO')
         self.assertEqual(mov.cantidad, -5)
-        self.assertEqual(mov.stock_previo, 20)
-        self.assertEqual(mov.stock_posterior, 15)
 
     def test_ajuste_de_stock_positivo_y_negativo(self):
         self.client.force_authenticate(user=self.admin)
@@ -155,8 +149,6 @@ class VentasYMovimientosTests(APITestCase):
             producto=self.producto_a,
             tipo='INGRESO',
             cantidad=10,
-            stock_previo=10,
-            stock_posterior=20,
             usuario=self.admin,
         )
         self.client.force_authenticate(user=self.vendedor)
@@ -202,8 +194,6 @@ class VentasYMovimientosTests(APITestCase):
         mov = movimientos.first()
         self.assertEqual(mov.tipo, 'VENTA')
         self.assertEqual(mov.cantidad, -3)
-        self.assertEqual(mov.stock_previo, 20)
-        self.assertEqual(mov.stock_posterior, 17)
         self.assertEqual(mov.usuario, self.vendedor)
 
     def test_venta_de_varios_productos_totales_y_subtotales(self):

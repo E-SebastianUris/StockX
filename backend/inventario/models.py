@@ -62,7 +62,6 @@ class Producto(models.Model):
         db_column='categoria_id',
         related_name='productos',
     )
-    precio_costo = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     precio_venta = models.DecimalField(max_digits=12, decimal_places=2)
     stock_actual = models.IntegerField(default=0)
     stock_minimo = models.IntegerField(default=5)
@@ -89,7 +88,6 @@ class Producto(models.Model):
             models.Index(fields=['activo', 'fecha_vencimiento'], name='idx_prod_vencimiento'),
         ]
         constraints = [
-            models.CheckConstraint(check=models.Q(precio_costo__gte=0), name='chk_prod_precio_costo_gte_0'),
             models.CheckConstraint(check=models.Q(precio_venta__gte=0), name='chk_prod_precio_venta_gte_0'),
             models.CheckConstraint(check=models.Q(stock_actual__gte=0), name='chk_prod_stock_actual_gte_0'),
             models.CheckConstraint(check=models.Q(stock_minimo__gte=0), name='chk_prod_stock_minimo_gte_0'),
@@ -97,6 +95,13 @@ class Producto(models.Model):
 
     def __str__(self):
         return self.nombre
+
+    @property
+    def precio_costo(self):
+        ultima_compra = self.producto_proveedores.order_by('-fecha_compra', '-id').first()
+        if ultima_compra is None:
+            return None
+        return ultima_compra.precio_compra
 
     @property
     def en_alerta_stock(self):
@@ -109,8 +114,8 @@ class Producto(models.Model):
 
 class ProductoProveedor(models.Model):
     """
-    Tabla intermedia M:N Producto <-> Proveedor. Tabla: productos_proveedores.
-    Compatible con db/schema.sql §5.
+    Registro de compras a proveedores por producto. Tabla: productos_proveedores.
+    Cada compra se conserva como un registro histórico.
     """
     producto = models.ForeignKey(
         Producto,
@@ -125,6 +130,8 @@ class ProductoProveedor(models.Model):
         related_name='producto_proveedores',
     )
     codigo_articulo_proveedor = models.CharField(max_length=64, null=True, blank=True)
+    cantidad_compra = models.PositiveIntegerField(default=0)
+    fecha_compra = models.DateField()
     precio_compra = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     creado_el = models.DateTimeField(auto_now_add=True)
 
@@ -132,8 +139,11 @@ class ProductoProveedor(models.Model):
         db_table = 'productos_proveedores'
         verbose_name = 'Producto-Proveedor'
         verbose_name_plural = 'Productos-Proveedores'
-        unique_together = [('producto', 'proveedor')]
         constraints = [
+            models.CheckConstraint(
+                check=models.Q(cantidad_compra__gt=0),
+                name='chk_pp_cantidad_compra_gt_0',
+            ),
             models.CheckConstraint(
                 check=models.Q(precio_compra__gte=0) | models.Q(precio_compra__isnull=True),
                 name='chk_pp_precio_compra_gte_0',
@@ -141,4 +151,4 @@ class ProductoProveedor(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.producto} — {self.proveedor}'
+        return f'{self.producto} — {self.proveedor} ({self.fecha_compra})'
