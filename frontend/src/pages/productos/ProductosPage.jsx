@@ -11,12 +11,21 @@ export default function ProductosPage() {
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Alertas contadores
+  const [alertasStockCount, setAlertasStockCount] = useState(0);
+  const [alertasVencCount, setAlertasVencCount] = useState(0);
+
   // Filtros
   const [search, setSearch] = useState('');
   const [selectedCategoria, setSelectedCategoria] = useState('');
   const [alertaFiltro, setAlertaFiltro] = useState(''); // '' | 'alerta_stock' | 'sin_stock'
 
-  // Modal Crear / Editar
+  // Modal Detalle (Read-only para Admin y Vendedor)
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Modal Crear / Editar (Solo Admin)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
@@ -24,7 +33,6 @@ export default function ProductosPage() {
     codigo_barra: '',
     categoria_id: '',
     descripcion: '',
-    precio_costo: '0',
     precio_venta: '0',
     stock_actual: '0',
     stock_minimo: '5',
@@ -52,6 +60,24 @@ export default function ProductosPage() {
     };
     fetchCategorias();
   }, []);
+
+  // Cargar métricas de alertas activas
+  const loadAlertasCounters = useCallback(async () => {
+    try {
+      const [stockAlerts, vencAlerts] = await Promise.all([
+        productosApi.getAlertasStock(),
+        productosApi.getAlertasVencimiento(),
+      ]);
+      setAlertasStockCount(stockAlerts.length);
+      setAlertasVencCount(vencAlerts.length);
+    } catch (err) {
+      console.error('Error al obtener alertas:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAlertasCounters();
+  }, [loadAlertasCounters]);
 
   // Cargar productos con filtros
   const loadProductos = useCallback(async () => {
@@ -86,7 +112,6 @@ export default function ProductosPage() {
       codigo_barra: '',
       categoria_id: categorias[0]?.id ? String(categorias[0].id) : '',
       descripcion: '',
-      precio_costo: '0',
       precio_venta: '0',
       stock_actual: '0',
       stock_minimo: '5',
@@ -100,7 +125,6 @@ export default function ProductosPage() {
   const handleOpenEdit = async (item) => {
     setFormError('');
     try {
-      // Obtenemos el detalle completo (incluye precio_costo y descripcion)
       const detail = await productosApi.getById(item.id);
       setEditingItem(detail);
       setFormData({
@@ -108,7 +132,6 @@ export default function ProductosPage() {
         codigo_barra: detail.codigo_barra || '',
         categoria_id: detail.categoria?.id ? String(detail.categoria.id) : '',
         descripcion: detail.descripcion || '',
-        precio_costo: String(detail.precio_costo ?? 0),
         precio_venta: String(detail.precio_venta ?? 0),
         stock_actual: String(detail.stock_actual ?? 0),
         stock_minimo: String(detail.stock_minimo ?? 0),
@@ -118,6 +141,19 @@ export default function ProductosPage() {
       setIsModalOpen(true);
     } catch (err) {
       console.error('Error al obtener detalle del producto:', err);
+    }
+  };
+
+  const handleOpenDetail = async (item) => {
+    setLoadingDetail(true);
+    setIsDetailOpen(true);
+    try {
+      const detail = await productosApi.getById(item.id);
+      setDetailItem(detail);
+    } catch (err) {
+      console.error('Error al cargar detalle del producto:', err);
+    } finally {
+      setLoadingDetail(false);
     }
   };
 
@@ -135,12 +171,12 @@ export default function ProductosPage() {
     setSaving(true);
     setFormError('');
 
+    // Payload SIN precio_costo (se calcula desde las compras)
     const payload = {
       nombre: formData.nombre.trim(),
       codigo_barra: formData.codigo_barra.trim() || null,
       categoria_id: Number(formData.categoria_id),
       descripcion: formData.descripcion.trim(),
-      precio_costo: Number(formData.precio_costo) || 0,
       precio_venta: Number(formData.precio_venta) || 0,
       stock_actual: parseInt(formData.stock_actual, 10) || 0,
       stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
@@ -156,15 +192,25 @@ export default function ProductosPage() {
       }
       setIsModalOpen(false);
       loadProductos();
+      loadAlertasCounters();
     } catch (err) {
       console.error('Error al guardar producto:', err);
       const errors = err.response?.data;
-      const firstError =
-        errors?.codigo_barra?.[0] ||
-        errors?.nombre?.[0] ||
-        errors?.categoria_id?.[0] ||
-        errors?.precio_venta?.[0] ||
-        'Error al guardar producto. Verifique los datos ingresados.';
+      let firstError = 'Error al guardar producto. Verifique los datos ingresados.';
+      if (typeof errors === 'string') {
+        firstError = errors;
+      } else if (errors && typeof errors === 'object') {
+        if (errors.detail) {
+          firstError = errors.detail;
+        } else {
+          for (const key of ['codigo_barra', 'nombre', 'categoria_id', 'precio_venta', 'non_field_errors']) {
+            if (errors[key]) {
+              firstError = Array.isArray(errors[key]) ? errors[key][0] : String(errors[key]);
+              break;
+            }
+          }
+        }
+      }
       setFormError(firstError);
     } finally {
       setSaving(false);
@@ -186,6 +232,7 @@ export default function ProductosPage() {
       setIsDeleteOpen(false);
       setDeleteId(null);
       loadProductos();
+      loadAlertasCounters();
     } catch (err) {
       console.error('Error al eliminar producto:', err);
       setDeleteError('No se pudo eliminar el producto. Podría tener movimientos o ventas asociadas.');
@@ -242,6 +289,49 @@ export default function ProductosPage() {
             Nuevo Producto
           </button>
         )}
+      </div>
+
+      {/* Tarjetas de Alertas Rápidas */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <button
+          type="button"
+          onClick={() => setAlertaFiltro(alertaFiltro === 'alerta_stock' ? '' : 'alerta_stock')}
+          className={`p-4 rounded-xl border text-left transition flex items-center justify-between ${
+            alertaFiltro === 'alerta_stock'
+              ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400'
+              : 'bg-white border-gray-200 hover:border-amber-300'
+          }`}
+        >
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-amber-100 text-amber-700 rounded-lg">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase">Alertas de Stock</p>
+              <p className="text-xl font-bold text-gray-900">{alertasStockCount}</p>
+            </div>
+          </div>
+          <span className="text-xs text-amber-700 font-medium bg-amber-100/70 px-2.5 py-1 rounded-full">
+            {alertaFiltro === 'alerta_stock' ? 'Filtro activo' : 'Filtrar'}
+          </span>
+        </button>
+
+        <div className="p-4 bg-white rounded-xl border border-gray-200 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-red-100 text-red-700 rounded-lg">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase">Próximos a Vencer</p>
+              <p className="text-xl font-bold text-gray-900">{alertasVencCount}</p>
+            </div>
+          </div>
+          <span className="text-xs text-gray-500 font-medium">≤ 15 días</span>
+        </div>
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
@@ -314,7 +404,7 @@ export default function ProductosPage() {
                   <th className="px-6 py-3">Stock</th>
                   <th className="px-6 py-3">Vencimiento</th>
                   <th className="px-6 py-3">Estado</th>
-                  {isAdmin && <th className="px-6 py-3 text-right">Acciones</th>}
+                  <th className="px-6 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -363,22 +453,31 @@ export default function ProductosPage() {
                         {prod.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
-                    {isAdmin && (
-                      <td className="px-6 py-4 text-right space-x-2">
-                        <button
-                          onClick={() => handleOpenEdit(prod)}
-                          className="text-blue-600 hover:text-blue-800 font-medium text-sm transition"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleOpenDelete(prod.id)}
-                          className="text-red-600 hover:text-red-800 font-medium text-sm transition"
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    )}
+                    <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                      <button
+                        onClick={() => handleOpenDetail(prod)}
+                        className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-900 shadow-xs transition"
+                        title="Ver detalle completo e historial de compras"
+                      >
+                        Ver Detalle
+                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            onClick={() => handleOpenEdit(prod)}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleOpenDelete(prod.id)}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition"
+                          >
+                            Eliminar
+                          </button>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -386,6 +485,127 @@ export default function ProductosPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Ver Detalle e Historial de Compras (Admin y Vendedor) */}
+      <Modal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        title={detailItem ? `Detalle: ${detailItem.nombre}` : 'Detalle del Producto'}
+        maxWidth="max-w-2xl"
+      >
+        {loadingDetail || !detailItem ? (
+          <div className="p-8 text-center text-gray-500 text-sm">
+            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+            Cargando información del producto...
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Resumen */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm">
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-medium">Categoría</p>
+                <p className="font-semibold text-gray-900">{detailItem.categoria?.nombre || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-medium">Código Barra</p>
+                <p className="font-mono text-gray-900">{detailItem.codigo_barra || 'Sin código'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-medium">Precio Venta</p>
+                <p className="font-semibold text-blue-600">
+                  ${Number(detailItem.precio_venta).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-medium">Costo Última Compra</p>
+                <p className="font-semibold text-gray-800">
+                  {detailItem.precio_costo !== null && detailItem.precio_costo !== undefined
+                    ? `$${Number(detailItem.precio_costo).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                    : 'Sin costo registrado'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-medium">Stock Actual / Mínimo</p>
+                <p className="font-semibold text-gray-900">
+                  {detailItem.stock_actual} / {detailItem.stock_minimo}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-medium">Vencimiento</p>
+                <p className="font-semibold text-gray-900">{detailItem.fecha_vencimiento || '-'}</p>
+              </div>
+            </div>
+
+            {detailItem.descripcion && (
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-medium mb-1">Descripción</p>
+                <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  {detailItem.descripcion}
+                </p>
+              </div>
+            )}
+
+            {/* Historial de Compras (producto_proveedores) */}
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center">
+                <svg className="w-4 h-4 mr-1.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Historial de Compras a Proveedores
+              </h4>
+
+              {detailItem.producto_proveedores && detailItem.producto_proveedores.length > 0 ? (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs text-gray-600">
+                    <thead className="bg-gray-100 text-gray-700 font-semibold uppercase">
+                      <tr>
+                        <th className="px-4 py-2.5">Proveedor</th>
+                        <th className="px-4 py-2.5">Cód. Art.</th>
+                        <th className="px-4 py-2.5">Fecha Compra</th>
+                        <th className="px-4 py-2.5 text-right">Cant. Comprada</th>
+                        <th className="px-4 py-2.5 text-right">Precio Compra</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {detailItem.producto_proveedores.map((pp) => (
+                        <tr key={pp.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 font-medium text-gray-900">
+                            {pp.proveedor?.nombre || 'Proveedor'}
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-gray-500">
+                            {pp.codigo_articulo_proveedor || '-'}
+                          </td>
+                          <td className="px-4 py-2.5">{pp.fecha_compra || '-'}</td>
+                          <td className="px-4 py-2.5 text-right font-medium text-gray-800">
+                            {pp.cantidad_compra ?? 0}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-gray-900">
+                            ${Number(pp.precio_compra).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 bg-gray-50 p-4 rounded-lg border border-dashed border-gray-300 text-center">
+                  No hay compras registradas con proveedores para este producto.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsDetailOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Modal Crear / Editar (Solo Admin) */}
       {isAdmin && (
@@ -449,19 +669,19 @@ export default function ProductosPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
-                  Precio Costo ($)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.precio_costo}
-                  onChange={(e) => setFormData({ ...formData, precio_costo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+              {/* Precio Costo solo lectura si editamos */}
+              {editingItem && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">
+                    Costo Última Compra (Calculado)
+                  </label>
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 font-medium">
+                    {editingItem.precio_costo !== null && editingItem.precio_costo !== undefined
+                      ? `$${Number(editingItem.precio_costo).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                      : 'Sin compras'}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
