@@ -59,94 +59,100 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
   const handleAgregarItem = (e) => {
     e.preventDefault();
     setItemError('');
-    setErrorGeneral('');
 
     if (!selectedProductoId) {
-      setItemError('Seleccioná un producto de la lista.');
+      setItemError('Elegí un producto para agregar.');
       return;
     }
 
-    const prod = productosDisponibles.find(
-      (p) => String(p.id) === String(selectedProductoId)
-    );
-
+    const prod = productosDisponibles.find((p) => String(p.id) === String(selectedProductoId));
     if (!prod) {
       setItemError('El producto seleccionado no es válido.');
       return;
     }
 
-    const cantidad = Number(cantidadInput);
-    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+    const cant = parseInt(cantidadInput, 10);
+    if (isNaN(cant) || cant <= 0) {
       setItemError('La cantidad debe ser un número entero mayor a 0.');
       return;
     }
 
-    if (detalles.some((d) => d.producto_id === prod.id)) {
-      setItemError(`El producto '${prod.nombre}' ya está agregado a la venta. Modificá la cantidad en la tabla.`);
+    if (cant > prod.stock_actual) {
+      setItemError(`Stock insuficiente para '${prod.nombre}'. Disponible: ${prod.stock_actual}.`);
       return;
     }
 
-    if (prod.stock_actual < cantidad) {
-      setItemError(`Stock insuficiente para '${prod.nombre}'. Disponible: ${prod.stock_actual}, solicitado: ${cantidad}.`);
-      return;
+    // Verificar si ya está en la lista
+    const yaExiste = detalles.find((d) => d.producto_id === prod.id);
+    if (yaExiste) {
+      const nuevaCantidad = yaExiste.cantidad + cant;
+      if (nuevaCantidad > prod.stock_actual) {
+        setItemError(
+          `No podés agregar más unidades de '${prod.nombre}'. Ya tenés ${yaExiste.cantidad} en la venta y el stock disponible es ${prod.stock_actual}.`
+        );
+        return;
+      }
+
+      setDetalles((prev) =>
+        prev.map((item) =>
+          item.producto_id === prod.id
+            ? {
+                ...item,
+                cantidad: nuevaCantidad,
+                subtotal: nuevaCantidad * item.precio_unitario,
+              }
+            : item
+        )
+      );
+    } else {
+      const precioUnit = Number(prod.precio_venta) || 0;
+      setDetalles((prev) => [
+        ...prev,
+        {
+          producto_id: prod.id,
+          nombre: prod.nombre,
+          codigo_barra: prod.codigo_barra,
+          precio_unitario: precioUnit,
+          cantidad: cant,
+          subtotal: precioUnit * cant,
+          stock_actual: prod.stock_actual,
+        },
+      ]);
     }
 
-    const precioUnitario = Number(prod.precio_venta);
-    const subtotal = precioUnitario * cantidad;
-
-    setDetalles((prev) => [
-      ...prev,
-      {
-        producto_id: prod.id,
-        nombre: prod.nombre,
-        codigo_barra: prod.codigo_barra,
-        stock_actual: prod.stock_actual,
-        precio_unitario: precioUnitario,
-        cantidad,
-        subtotal,
-      },
-    ]);
-
-    // Limpiar selector
+    // Resetear formulario de selección
     setSelectedProductoId('');
     setCantidadInput(1);
+    setItemError('');
   };
 
-  // Modificar cantidad directamente en la tabla
+  // Quitar ítem
+  const handleEliminarItem = (productoId) => {
+    setDetalles((prev) => prev.filter((d) => d.producto_id !== productoId));
+  };
+
+  // Cambiar cantidad directamente en la tabla
   const handleCambiarCantidad = (productoId, nuevaCantidadStr) => {
-    setErrorGeneral('');
-    const nuevaCantidad = Number(nuevaCantidadStr);
+    const cant = parseInt(nuevaCantidadStr, 10);
+    if (isNaN(cant) || cant <= 0) return;
 
     setDetalles((prev) =>
-      prev.map((item) => {
-        if (item.producto_id === productoId) {
-          if (!Number.isInteger(nuevaCantidad) || nuevaCantidad <= 0) {
-            return item;
-          }
-          if (nuevaCantidad > item.stock_actual) {
-            setErrorGeneral(
-              `Stock insuficiente para '${item.nombre}'. Disponible: ${item.stock_actual}, solicitado: ${nuevaCantidad}.`
-            );
-            return item;
+      prev.map((d) => {
+        if (d.producto_id === productoId) {
+          if (cant > d.stock_actual) {
+            return d;
           }
           return {
-            ...item,
-            cantidad: nuevaCantidad,
-            subtotal: item.precio_unitario * nuevaCantidad,
+            ...d,
+            cantidad: cant,
+            subtotal: cant * d.precio_unitario,
           };
         }
-        return item;
+        return d;
       })
     );
   };
 
-  // Eliminar ítem del listado
-  const handleEliminarItem = (productoId) => {
-    setDetalles((prev) => prev.filter((d) => d.producto_id !== productoId));
-    setErrorGeneral('');
-  };
-
-  // Calcular total estimado
   const totalEstimado = detalles.reduce((acc, curr) => acc + curr.subtotal, 0);
 
   // Enviar venta
@@ -197,7 +203,6 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
       await onVentaCreada(payload);
     } catch (err) {
       console.error('Error al registrar venta:', err);
-      // Extraer mensaje del backend 400
       let backendMsg = '';
       if (err.response?.data) {
         const data = err.response.data;
@@ -212,7 +217,6 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
         } else if (data.detail) {
           backendMsg = String(data.detail);
         } else {
-          // Serializar otros campos
           backendMsg = Object.entries(data)
             .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
             .join(' | ');
@@ -231,21 +235,21 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
       title="Registrar Nueva Venta"
       maxWidth="max-w-4xl"
     >
-      <div className="space-y-6">
+      <div className="space-y-6 text-gray-900 dark:text-zinc-100">
         {/* Banner de error general / backend */}
         {errorGeneral && (
-          <div className="p-3.5 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm flex items-start space-x-2">
-            <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-xl text-red-800 dark:text-red-300 text-sm flex items-start space-x-2">
+            <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <div className="flex-1 font-medium">{errorGeneral}</div>
+            <div className="flex-1 font-semibold">{errorGeneral}</div>
           </div>
         )}
 
         {/* Sección: Selección y agregado de productos */}
-        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
-          <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-            <svg className="w-4 h-4 mr-1.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="bg-blue-50/50 dark:bg-zinc-800/50 border border-blue-100 dark:border-zinc-700/60 rounded-2xl p-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-zinc-300 mb-3 flex items-center">
+            <svg className="w-4 h-4 mr-1.5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Agregar producto a la venta
@@ -254,7 +258,7 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
             {/* Selector de Producto */}
             <div className="md:col-span-7">
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
                 Producto
               </label>
               <select
@@ -264,7 +268,7 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
                   setItemError('');
                 }}
                 disabled={loadingProductos}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-xl text-sm bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               >
                 <option value="">-- Seleccionar producto disponible --</option>
                 {productosDisponibles.map((prod) => (
@@ -282,7 +286,7 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
 
             {/* Input Cantidad */}
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
                 Cantidad
               </label>
               <input
@@ -291,7 +295,7 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
                 max={productoSeleccionado ? productoSeleccionado.stock_actual : undefined}
                 value={cantidadInput}
                 onChange={(e) => setCantidadInput(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-xl text-sm bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 font-bold text-center focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
 
@@ -301,7 +305,7 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
                 type="button"
                 onClick={handleAgregarItem}
                 disabled={!selectedProductoId || loadingProductos}
-                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-medium transition flex items-center justify-center space-x-1"
+                className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-zinc-700 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center space-x-1 shadow-sm shadow-blue-500/20"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -313,29 +317,29 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
 
           {/* Información rápida del producto seleccionado */}
           {productoSeleccionado && (
-            <div className="mt-2 text-xs text-gray-600 flex items-center justify-between">
+            <div className="mt-2.5 text-xs text-gray-600 dark:text-zinc-400 flex items-center justify-between">
               <span>
-                Precio unitario: <strong className="text-gray-900">${Number(productoSeleccionado.precio_venta).toFixed(2)}</strong> | Stock actual: <strong className={productoSeleccionado.stock_actual <= 5 ? 'text-amber-600' : 'text-gray-900'}>{productoSeleccionado.stock_actual} un.</strong>
+                Precio: <strong className="text-gray-900 dark:text-zinc-100">${Number(productoSeleccionado.precio_venta).toFixed(2)}</strong> | Stock: <strong className={productoSeleccionado.stock_actual <= 5 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-zinc-100'}>{productoSeleccionado.stock_actual} un.</strong>
               </span>
               <span>
-                Subtotal línea: <strong className="text-blue-700 font-mono">${(Number(productoSeleccionado.precio_venta) * (Number(cantidadInput) || 0)).toFixed(2)}</strong>
+                Subtotal: <strong className="text-blue-600 dark:text-blue-400 font-mono">${(Number(productoSeleccionado.precio_venta) * (Number(cantidadInput) || 0)).toFixed(2)}</strong>
               </span>
             </div>
           )}
 
           {itemError && (
-            <p className="mt-2 text-xs text-red-600 font-medium">{itemError}</p>
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400 font-semibold">{itemError}</p>
           )}
         </div>
 
         {/* Tabla de ítems en el carrito */}
         <div>
-          <h4 className="text-sm font-semibold text-gray-900 mb-2">
+          <h4 className="text-sm font-bold text-gray-900 dark:text-zinc-100 mb-2">
             Ítems de la venta ({detalles.length})
           </h4>
-          <div className="border border-gray-200 rounded-lg overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50 text-gray-600 text-xs uppercase font-semibold">
+          <div className="border border-gray-200 dark:border-zinc-700/80 rounded-xl overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100 dark:divide-zinc-800 text-sm">
+              <thead className="bg-gray-50/80 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 text-[11px] uppercase font-bold tracking-wider">
                 <tr>
                   <th scope="col" className="px-4 py-2.5 text-left">Producto</th>
                   <th scope="col" className="px-4 py-2.5 text-center">Stock disp.</th>
@@ -345,26 +349,26 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
                   <th scope="col" className="px-3 py-2.5 text-center w-12"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
+              <tbody className="divide-y divide-gray-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
                 {detalles.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-8 text-center text-sm text-gray-400">
+                    <td colSpan="6" className="px-4 py-8 text-center text-sm text-gray-400 dark:text-zinc-500">
                       No hay productos agregados a la venta todavía. Seleccioná un producto arriba.
                     </td>
                   </tr>
                 ) : (
                   detalles.map((d) => (
-                    <tr key={d.producto_id} className="hover:bg-gray-50/70 transition">
+                    <tr key={d.producto_id} className="hover:bg-gray-50/70 dark:hover:bg-zinc-800/40 transition">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">{d.nombre}</p>
+                        <p className="font-semibold text-gray-900 dark:text-zinc-100">{d.nombre}</p>
                         {d.codigo_barra && (
-                          <p className="text-xs text-gray-400 font-mono">{d.codigo_barra}</p>
+                          <p className="text-xs text-gray-400 dark:text-zinc-500 font-mono">{d.codigo_barra}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center text-xs text-gray-600">
+                      <td className="px-4 py-3 text-center text-xs text-gray-600 dark:text-zinc-400">
                         {d.stock_actual}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-zinc-300">
                         ${d.precio_unitario.toFixed(2)}
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -374,17 +378,17 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
                           max={d.stock_actual}
                           value={d.cantidad}
                           onChange={(e) => handleCambiarCantidad(d.producto_id, e.target.value)}
-                          className="w-20 px-2 py-1 text-center border border-gray-300 rounded font-semibold text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          className="w-20 px-2 py-1 text-center border border-gray-300 dark:border-zinc-700 rounded-lg font-bold text-sm bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                         />
                       </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-gray-900">
+                      <td className="px-4 py-3 text-right font-mono font-bold text-gray-900 dark:text-zinc-100">
                         ${d.subtotal.toFixed(2)}
                       </td>
                       <td className="px-3 py-3 text-center">
                         <button
                           type="button"
                           onClick={() => handleEliminarItem(d.producto_id)}
-                          className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition"
+                          className="text-red-500 hover:text-red-700 dark:hover:text-red-400 p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition"
                           title="Quitar producto"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -401,28 +405,28 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
         </div>
 
         {/* Resumen Total Estimado */}
-        <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <span className="text-sm font-semibold text-emerald-900">Total Estimado de la Venta</span>
-            <p className="text-xs text-emerald-700">
+            <span className="text-sm font-bold text-emerald-900 dark:text-emerald-300">Total Estimado de la Venta</span>
+            <p className="text-xs text-emerald-700 dark:text-emerald-400">
               * Estimado. El total oficial es calculado y confirmado por el backend al registrar la venta.
             </p>
           </div>
-          <div className="text-2xl font-black text-emerald-800 font-mono">
+          <div className="text-2xl font-black text-emerald-800 dark:text-emerald-300 font-mono">
             ${totalEstimado.toFixed(2)}
           </div>
         </div>
 
         {/* Método de Pago y Observaciones */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-200">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-zinc-800">
           <div>
-            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-700 dark:text-zinc-300 mb-1.5">
               Método de Pago <span className="text-red-500">*</span>
             </label>
             <select
               value={metodoPago}
               onChange={(e) => setMetodoPago(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-xl text-sm bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             >
               {METODOS_PAGO.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -433,7 +437,7 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-700 dark:text-zinc-300 mb-1.5">
               Observaciones (opcional)
             </label>
             <input
@@ -442,37 +446,30 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
               placeholder="Ej: Pago con cambio justo, cliente habitual..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-xl text-sm bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
         </div>
 
-        {/* Botones de acción */}
-        <div className="flex justify-end items-center space-x-3 pt-4 border-t border-gray-200">
+        {/* Botones de acción (Con soporte oscuro para Cancelar) */}
+        <div className="flex justify-end items-center space-x-3 pt-4 border-t border-gray-100 dark:border-zinc-800">
           <button
             type="button"
             onClick={onClose}
             disabled={guardando}
-            className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition"
+            className="px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-xl hover:bg-gray-50 dark:hover:bg-zinc-700/60 transition disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
-            type="button"
+            type="submit"
             onClick={handleSubmitVenta}
             disabled={guardando || detalles.length === 0}
-            className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 rounded-lg shadow-sm transition flex items-center space-x-2"
+            className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 dark:disabled:bg-zinc-700 rounded-xl shadow-sm transition flex items-center space-x-2"
           >
             {guardando ? (
               <>
-                <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 <span>Confirmando Venta...</span>
               </>
             ) : (
@@ -489,4 +486,3 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
     </Modal>
   );
 }
-
