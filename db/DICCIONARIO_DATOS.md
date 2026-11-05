@@ -66,6 +66,7 @@ erDiagram
         bigint producto_id FK
         varchar tipo "INGRESO | EGRESO | AJUSTE | VENTA"
         integer cantidad
+        varchar motivo
         date fecha_vencimiento_asociada
         bigint usuario_id FK
         bigint venta_id FK
@@ -78,6 +79,7 @@ erDiagram
         numeric total
         bigint vendedor_id FK
         varchar metodo_pago "EFECTIVO | TRANSFERENCIA | DEBITO | CREDITO | OTRO"
+        varchar observaciones
     }
 
     DETALLES_VENTAS {

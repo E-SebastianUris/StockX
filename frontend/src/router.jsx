@@ -5,6 +5,7 @@ import LoginPage from './pages/auth/LoginPage';
 import ProductosPage from './pages/productos/ProductosPage';
 import CategoriasPage from './pages/categorias/CategoriasPage';
 import ProveedoresPage from './pages/proveedores/ProveedoresPage';
+import VentasPage from './pages/ventas/VentasPage';
 
 export const router = createBrowserRouter([
   {
@@ -42,6 +43,10 @@ export const router = createBrowserRouter([
             <ProveedoresPage />
           </ProtectedRoute>
         ),
+      },
+      {
+        path: 'ventas',
+        element: <VentasPage />,
       },
       {
         path: '*',
