@@ -10,11 +10,11 @@ Django es el **único responsable del ciclo de vida del esquema** (`managed = Tr
 1. `usuarios`: Extensión de `AbstractUser` de Django (`authentication.Usuario`) con atributos `rol` (`ADMIN`, `VENDEDOR`) y `telefono`.
 2. `categorias`: Clasificación de artículos de kiosco (`inventario.Categoria`).
 3. `proveedores`: Distribuidores mayoristas (`inventario.Proveedor`).
-4. `productos`: Artículos, precios, stock y vencimiento (`inventario.Producto`).
-5. `productos_proveedores`: Relación N:M explícita con precios de compra (`inventario.ProductoProveedor`).
+4. `productos`: Artículos, precio de venta, stock y vencimiento (`inventario.Producto`). El costo se deriva de la última compra en `productos_proveedores`.
+5. `productos_proveedores`: Historial de compras a proveedores con cantidad, fecha y precio asociado (`inventario.ProductoProveedor`).
 6. `ventas`: Encabezado transaccional de operaciones en mostrador (`ventas.Venta`).
 7. `detalles_ventas`: Renglones de venta con validaciones de subtotal y cantidad (`ventas.DetalleVenta`).
-8. `movimientos_stock`: Trazabilidad completa e inmutable de stock (`ventas.MovimientoStock`).
+8. `movimientos_stock`: Trazabilidad del movimiento de stock sin persistir el estado previo/posterior (`ventas.MovimientoStock`).
 
 ### Vistas SQL integradas (3 vistas):
 1. `vista_alertas_stock_minimo`: Detección de productos en umbral mínimo o sin stock.

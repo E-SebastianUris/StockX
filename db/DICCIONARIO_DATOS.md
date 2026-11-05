@@ -44,7 +44,6 @@ erDiagram
         varchar codigo_barra UK
         varchar nombre
         bigint categoria_id FK
-        numeric precio_costo
         numeric precio_venta
         integer stock_actual
         integer stock_minimo
@@ -57,6 +56,8 @@ erDiagram
         bigint producto_id FK
         bigint proveedor_id FK
         varchar codigo_articulo_proveedor
+        integer cantidad_compra
+        date fecha_compra
         numeric precio_compra
     }
 
@@ -65,8 +66,6 @@ erDiagram
         bigint producto_id FK
         varchar tipo "INGRESO | EGRESO | AJUSTE | VENTA"
         integer cantidad
-        integer stock_previo
-        integer stock_posterior
         date fecha_vencimiento_asociada
         bigint usuario_id FK
         bigint venta_id FK
@@ -157,7 +156,6 @@ Artículos comercializados en el kiosco con control de stock y vencimiento simpl
 | `nombre` | VARCHAR(150) | NO | INDEX | Nombre comercial del producto |
 | `descripcion` | TEXT | SÍ | - | Detalle o presentación |
 | `categoria_id` | BIGINT | NO | FK -> `categorias(id)` ON DELETE RESTRICT | Categoría asociada |
-| `precio_costo` | NUMERIC(12,2)| NO | DEFAULT 0.00, CHECK (>= 0) | Precio de compra al proveedor |
 | `precio_venta` | NUMERIC(12,2)| NO | CHECK (>= 0) | Precio al público en mostrador |
 | `stock_actual` | INTEGER | NO | DEFAULT 0, CHECK (>= 0) | Unidades físicas en kiosco |
 | `stock_minimo` | INTEGER | NO | DEFAULT 5, CHECK (>= 0) | Umbral para alerta de reposición |
@@ -181,11 +179,13 @@ Tabla intermedia que relaciona productos con sus múltiples distribuidores.
 | `producto_id` | BIGINT | NO | FK -> `productos(id)` ON DELETE CASCADE | Producto relacionado |
 | `proveedor_id` | BIGINT | NO | FK -> `proveedores(id)` ON DELETE CASCADE | Proveedor relacionado |
 | `codigo_articulo_proveedor` | VARCHAR(64) | SÍ | - | Código interno del proveedor |
-| `precio_compra`| NUMERIC(12,2)| SÍ | CHECK (>= 0) | Costo ofrecido por este proveedor |
+| `cantidad_compra` | INTEGER | NO | CHECK (cantidad_compra > 0) | Unidades adquiridas en la compra |
+| `fecha_compra` | DATE | NO | - | Fecha en que se registró la compra |
+| `precio_compra`| NUMERIC(12,2)| SÍ | CHECK (>= 0) | Costo unitario asociado a esa compra |
 | `creado_el` | TIMESTAMP TZ | NO | DEFAULT CURRENT_TIMESTAMP | Fecha de asignación |
 
-*Restricción de Integridad:*
-- `unique_producto_proveedor`: `UNIQUE(producto_id, proveedor_id)` para evitar duplicidad de vínculos.
+*Regla de integridad:*
+- Cada compra se conserva como un registro independiente porque un mismo producto puede comprarse repetidas veces a un mismo proveedor.
 
 ---
 
@@ -229,8 +229,6 @@ Registro inmutable de entradas, salidas, ajustes y ventas de mercadería.
 | `producto_id` | BIGINT | NO | FK -> `productos(id)` ON DELETE RESTRICT | Producto afectado |
 | `tipo` | VARCHAR(20) | NO | CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE', 'VENTA')) | Tipo de operación |
 | `cantidad` | INTEGER | NO | CHECK (cantidad <> 0) | Cantidad movida |
-| `stock_previo` | INTEGER | NO | CHECK (stock_previo >= 0) | Stock antes del movimiento |
-| `stock_posterior`| INTEGER | NO | CHECK (stock_posterior >= 0) | Stock resultante tras la operación |
 | `motivo` | VARCHAR(255) | SÍ | - | Causa (Compra, Rotura, Vencimiento, Venta mostrador) |
 | `fecha_vencimiento_asociada` | DATE | SÍ | - | Vencimiento informado en el ingreso |
 | `usuario_id` | BIGINT | SÍ | FK -> `usuarios(id)` ON DELETE RESTRICT | Responsable que ejecutó la acción |

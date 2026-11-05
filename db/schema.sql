@@ -47,7 +47,6 @@ CREATE TABLE IF NOT EXISTS productos (
     nombre VARCHAR(150) NOT NULL,
     descripcion TEXT NULL,
     categoria_id BIGINT NOT NULL REFERENCES categorias(id) ON DELETE RESTRICT,
-    precio_costo NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (precio_costo >= 0),
     precio_venta NUMERIC(12, 2) NOT NULL CHECK (precio_venta >= 0),
     stock_actual INTEGER NOT NULL DEFAULT 0 CHECK (stock_actual >= 0),
     stock_minimo INTEGER NOT NULL DEFAULT 5 CHECK (stock_minimo >= 0),
@@ -57,15 +56,16 @@ CREATE TABLE IF NOT EXISTS productos (
     actualizado_el TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. TABLA INTERMEDIA M:N: PRODUCTOS <-> PROVEEDORES
+-- 5. TABLA INTERMEDIA M:N: PRODUCTOS <-> PROVEEDORES (historial de compras)
 CREATE TABLE IF NOT EXISTS productos_proveedores (
     id BIGSERIAL PRIMARY KEY,
     producto_id BIGINT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
     proveedor_id BIGINT NOT NULL REFERENCES proveedores(id) ON DELETE CASCADE,
     codigo_articulo_proveedor VARCHAR(64) NULL,
+    cantidad_compra INTEGER NOT NULL CHECK (cantidad_compra > 0),
+    fecha_compra DATE NOT NULL,
     precio_compra NUMERIC(12, 2) NULL CHECK (precio_compra >= 0),
-    creado_el TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_producto_proveedor UNIQUE (producto_id, proveedor_id)
+    creado_el TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 6. TABLA: VENTAS (Encabezado transaccional)
@@ -96,8 +96,6 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
     producto_id BIGINT NOT NULL REFERENCES productos(id) ON DELETE RESTRICT,
     tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE', 'VENTA')),
     cantidad INTEGER NOT NULL CHECK (cantidad <> 0),
-    stock_previo INTEGER NOT NULL CHECK (stock_previo >= 0),
-    stock_posterior INTEGER NOT NULL CHECK (stock_posterior >= 0),
     motivo VARCHAR(255) NULL,
     fecha_vencimiento_asociada DATE NULL,
     usuario_id BIGINT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,

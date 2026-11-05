@@ -25,7 +25,7 @@
   2. Verificar disponibilidad de existencias (`stock_actual >= cantidad`).
   3. Crear encabezado `Venta` y líneas de `DetalleVenta`.
   4. Descontar `stock_actual` en `Producto`.
-  5. Crear los registros correspondientes en `MovimientoStock` (con `tipo = 'VENTA'`, `cantidad = -N`, `stock_previo`, `stock_posterior`, `usuario_id` y `venta_id`).
+  5. Crear los registros correspondientes en `MovimientoStock` (con `tipo = 'VENTA'`, `cantidad = -N`, `usuario_id` y `venta_id`). El stock actualizado se mantiene en `productos.stock_actual` y no se persiste en el movimiento.
   6. Confirmar la transacción (commit automático). Si falla alguna validación, rollback completo.
 
 ---

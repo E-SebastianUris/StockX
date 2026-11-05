@@ -36,10 +36,27 @@ VALUES
 ON CONFLICT (username) DO NOTHING;
 
 -- 4. Productos de muestra para pruebas del Kiosco 'La Esquina'
-INSERT INTO productos (codigo_barra, nombre, descripcion, categoria_id, precio_costo, precio_venta, stock_actual, stock_minimo, fecha_vencimiento, activo)
+INSERT INTO productos (codigo_barra, nombre, descripcion, categoria_id, precio_venta, stock_actual, stock_minimo, fecha_vencimiento, activo)
 VALUES
-('7790580123456', 'Alfajor Jorgito Chocolate', 'Alfajor relleno con dulce de leche 55g', 1, 450.00, 800.00, 24, 10, CURRENT_DATE + INTERVAL '45 days', TRUE),
-('7791234567890', 'Coca Cola 500ml', 'Gaseosa regular botella PET 500ml', 2, 750.00, 1300.00, 4, 10, CURRENT_DATE + INTERVAL '120 days', TRUE), -- En alerta stock mínimo
-('7799876543210', 'Papas Fritas Lays Clásicas 85g', 'Papas fritas saladas', 4, 900.00, 1600.00, 15, 5, CURRENT_DATE + INTERVAL '5 days', TRUE),   -- En alerta de vencimiento urgente
-('7790001112223', 'Turrón de Maní Arcor 25g', 'Turrón oblea relleno de pasta de turrón', 1, 150.00, 300.00, 0, 15, CURRENT_DATE + INTERVAL '90 days', TRUE)     -- Sin stock
+('7790580123456', 'Alfajor Jorgito Chocolate', 'Alfajor relleno con dulce de leche 55g', 1, 800.00, 24, 10, CURRENT_DATE + INTERVAL '45 days', TRUE),
+('7791234567890', 'Coca Cola 500ml', 'Gaseosa regular botella PET 500ml', 2, 1300.00, 4, 10, CURRENT_DATE + INTERVAL '120 days', TRUE), -- En alerta stock mínimo
+('7799876543210', 'Papas Fritas Lays Clásicas 85g', 'Papas fritas saladas', 4, 1600.00, 15, 5, CURRENT_DATE + INTERVAL '5 days', TRUE),   -- En alerta de vencimiento urgente
+('7790001112223', 'Turrón de Maní Arcor 25g', 'Turrón oblea relleno de pasta de turrón', 1, 300.00, 0, 15, CURRENT_DATE + INTERVAL '90 days', TRUE)     -- Sin stock
 ON CONFLICT (codigo_barra) DO NOTHING;
+
+-- 5. Compras históricas de ejemplo para recuperar el costo de cada producto
+INSERT INTO productos_proveedores (producto_id, proveedor_id, codigo_articulo_proveedor, cantidad_compra, fecha_compra, precio_compra)
+SELECT p.id, pr.id, 'ALFA-001', 120, CURRENT_DATE - INTERVAL '20 days', 450.00
+FROM productos p
+JOIN proveedores pr ON pr.nombre = 'Distribuidora Arcor La Plata'
+WHERE p.codigo_barra = '7790580123456'
+UNION ALL
+SELECT p.id, pr.id, 'CC500-001', 60, CURRENT_DATE - INTERVAL '12 days', 750.00
+FROM productos p
+JOIN proveedores pr ON pr.nombre = 'Coca-Cola FEMSA'
+WHERE p.codigo_barra = '7791234567890'
+UNION ALL
+SELECT p.id, pr.id, 'LAYS-001', 40, CURRENT_DATE - INTERVAL '8 days', 900.00
+FROM productos p
+JOIN proveedores pr ON pr.nombre = 'Distribuidora Nobleza'
+WHERE p.codigo_barra = '7799876543210';

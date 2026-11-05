@@ -127,8 +127,6 @@ class MovimientoStock(models.Model):
     )
     tipo = models.CharField(max_length=20, choices=TIPOS)
     cantidad = models.IntegerField()
-    stock_previo = models.IntegerField()
-    stock_posterior = models.IntegerField()
     motivo = models.CharField(max_length=255, null=True, blank=True)
     fecha_vencimiento_asociada = models.DateField(null=True, blank=True)
     usuario = models.ForeignKey(
@@ -169,14 +167,6 @@ class MovimientoStock(models.Model):
             models.CheckConstraint(
                 check=~models.Q(cantidad=0),
                 name='chk_mov_cantidad_no_cero',
-            ),
-            models.CheckConstraint(
-                check=models.Q(stock_previo__gte=0),
-                name='chk_mov_stock_previo_gte_0',
-            ),
-            models.CheckConstraint(
-                check=models.Q(stock_posterior__gte=0),
-                name='chk_mov_stock_posterior_gte_0',
             ),
         ]
 
