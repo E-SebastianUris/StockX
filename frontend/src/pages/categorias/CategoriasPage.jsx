@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { categoriasApi } from '../../api/inventario';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import PageHeader from '../../components/PageHeader';
 
 export default function CategoriasPage() {
   const [categorias, setCategorias] = useState([]);
@@ -115,35 +116,40 @@ export default function CategoriasPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Categorías</h1>
-          <p className="text-sm text-gray-500">Administrá las categorías de productos del kiosco</p>
-        </div>
+      {/* Modern Page Header */}
+      <PageHeader
+        title="Categorías"
+        description="Administrá las categorías de productos del kiosco"
+        badge="Catálogo"
+        icon={
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+        }
+      >
         <button
           onClick={handleOpenCreate}
-          className="inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-lg shadow-sm transition"
+          className="inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-sm shadow-blue-500/25 transition"
         >
-          <svg className="w-5 h-5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           Nueva Categoría
         </button>
-      </div>
+      </PageHeader>
 
       {/* Search Bar */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+      <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl shadow-xs border border-gray-200/80 dark:border-zinc-800/80">
         <div className="relative max-w-md">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nombre..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
           />
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-gray-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
@@ -151,36 +157,38 @@ export default function CategoriasPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xs border border-gray-200/80 dark:border-zinc-800/80 overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-gray-500 text-sm">
+          <div className="p-12 text-center text-gray-500 dark:text-zinc-400 text-sm">
             <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
             Cargando categorías...
           </div>
         ) : categorias.length === 0 ? (
-          <div className="p-8 text-center text-gray-500 text-sm">
+          <div className="p-12 text-center text-gray-500 dark:text-zinc-400 text-sm">
             No se encontraron categorías registradas.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500 border-b border-gray-200">
+            <table className="w-full text-left text-sm text-gray-600 dark:text-zinc-300">
+              <thead className="bg-gray-50/70 dark:bg-zinc-800/50 text-[11px] uppercase font-bold tracking-wider text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
                 <tr>
-                  <th className="px-6 py-3">Nombre</th>
-                  <th className="px-6 py-3">Descripción</th>
-                  <th className="px-6 py-3">Estado</th>
-                  <th className="px-6 py-3 text-right">Acciones</th>
+                  <th className="px-6 py-3.5">Nombre</th>
+                  <th className="px-6 py-3.5">Descripción</th>
+                  <th className="px-6 py-3.5">Estado</th>
+                  <th className="px-6 py-3.5 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/70">
                 {categorias.map((cat) => (
-                  <tr key={cat.id} className="hover:bg-gray-50/70 transition">
-                    <td className="px-6 py-4 font-medium text-gray-900">{cat.nombre}</td>
-                    <td className="px-6 py-4 text-gray-500">{cat.descripcion || '-'}</td>
+                  <tr key={cat.id} className="hover:bg-gray-50/60 dark:hover:bg-zinc-800/40 transition">
+                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-zinc-100">{cat.nombre}</td>
+                    <td className="px-6 py-4 text-gray-500 dark:text-zinc-400 text-xs">{cat.descripcion || '-'}</td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          cat.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                          cat.activo
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/50'
+                            : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700'
                         }`}
                       >
                         {cat.activo ? 'Activa' : 'Inactiva'}
@@ -189,13 +197,13 @@ export default function CategoriasPage() {
                     <td className="px-6 py-4 text-right space-x-2">
                       <button
                         onClick={() => handleOpenEdit(cat)}
-                        className="text-blue-600 hover:text-blue-800 font-medium text-sm transition"
+                        className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-900/60 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition"
                       >
                         Editar
                       </button>
                       <button
                         onClick={() => handleOpenDelete(cat.id)}
-                        className="text-red-600 hover:text-red-800 font-medium text-sm transition"
+                        className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 border border-rose-200/80 dark:border-rose-900/60 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition"
                       >
                         Eliminar
                       </button>
@@ -216,13 +224,13 @@ export default function CategoriasPage() {
       >
         <form onSubmit={handleSave} className="space-y-4">
           {formError && (
-            <div className="p-3 bg-red-50 border-l-4 border-red-500 rounded text-red-700 text-sm">
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 border-l-4 border-red-500 rounded text-red-700 dark:text-red-300 text-sm">
               {formError}
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
               Nombre <span className="text-red-500">*</span>
             </label>
             <input
@@ -230,20 +238,20 @@ export default function CategoriasPage() {
               required
               value={formData.nombre}
               onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               placeholder="Ej: Golosinas, Bebidas..."
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase text-gray-600 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
               Descripción
             </label>
             <textarea
               rows={3}
               value={formData.descripcion}
               onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               placeholder="Opcional..."
             />
           </div>
@@ -254,26 +262,26 @@ export default function CategoriasPage() {
               id="cat-activo"
               checked={formData.activo}
               onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-zinc-700 rounded"
             />
-            <label htmlFor="cat-activo" className="ml-2 block text-sm text-gray-700 font-medium">
+            <label htmlFor="cat-activo" className="ml-2 block text-sm text-gray-700 dark:text-zinc-300 font-semibold">
               Categoría activa
             </label>
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100 dark:border-zinc-800">
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
               disabled={saving}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              className="px-4 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm font-semibold text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition flex items-center justify-center min-w-[90px]"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center min-w-[90px] shadow-sm shadow-blue-500/25"
             >
               {saving ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

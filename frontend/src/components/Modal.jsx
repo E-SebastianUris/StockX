@@ -17,22 +17,22 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 transition-opacity"
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 
       {/* Dialog container */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className={`relative w-full ${maxWidth} bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden transform transition-all`}
+          className={`relative w-full ${maxWidth} bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden transform transition-all text-gray-900 dark:text-zinc-100`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-zinc-800">
+            <h3 className="text-base font-bold text-gray-900 dark:text-zinc-100 tracking-tight">{title}</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 rounded-lg p-1 transition"
+              className="text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 transition"
               aria-label="Cerrar"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -42,10 +42,9 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
           </div>
 
           {/* Content */}
-          <div className="px-6 py-4 max-h-[80vh] overflow-y-auto">{children}</div>
+          <div className="px-6 py-5 max-h-[80vh] overflow-y-auto">{children}</div>
         </div>
       </div>
     </div>
   );
 }
-
