@@ -6,6 +6,7 @@ import ProductosPage from './pages/productos/ProductosPage';
 import CategoriasPage from './pages/categorias/CategoriasPage';
 import ProveedoresPage from './pages/proveedores/ProveedoresPage';
 import VentasPage from './pages/ventas/VentasPage';
+import MovimientosPage from './pages/movimientos/MovimientosPage';
 
 export const router = createBrowserRouter([
   {
@@ -47,6 +48,10 @@ export const router = createBrowserRouter([
       {
         path: 'ventas',
         element: <VentasPage />,
+      },
+      {
+        path: 'movimientos',
+        element: <MovimientosPage />,
       },
       {
         path: '*',
