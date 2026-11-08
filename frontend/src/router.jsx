@@ -7,6 +7,7 @@ import CategoriasPage from './pages/categorias/CategoriasPage';
 import ProveedoresPage from './pages/proveedores/ProveedoresPage';
 import VentasPage from './pages/ventas/VentasPage';
 import MovimientosPage from './pages/movimientos/MovimientosPage';
+import DashboardPage from './pages/dashboard/DashboardPage';
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +29,14 @@ export const router = createBrowserRouter([
       {
         path: 'productos',
         element: <ProductosPage />,
+      },
+      {
+        path: 'dashboard',
+        element: (
+          <ProtectedRoute requiredRole="ADMIN">
+            <DashboardPage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: 'categorias',

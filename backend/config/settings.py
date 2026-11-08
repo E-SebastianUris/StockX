@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'authentication',
     'inventario',
     'ventas',
+    'dashboard',
 ]
 
 MIDDLEWARE = [
