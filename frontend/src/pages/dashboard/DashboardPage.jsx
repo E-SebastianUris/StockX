@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import { dashboardApi } from '../../api/dashboard';
+import { proveedoresApi } from '../../api/inventario';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('es-AR', {
@@ -24,6 +25,13 @@ export default function DashboardPage() {
   // Selector de pestaña para alertas
   const [alertaTab, setAlertaTab] = useState('stock'); // 'stock' | 'vencimiento'
 
+  // Filtros de recaudación
+  const [mesRecaudacion, setMesRecaudacion] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
+  const [proveedorId, setProveedorId] = useState('');
+  const [proveedores, setProveedores] = useState([]);
+
   const fetchDashboardData = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -31,7 +39,16 @@ export default function DashboardPage() {
     setError(null);
 
     try {
-      const response = await dashboardApi.getMetrics({ limit: 10 });
+      const params = { limit: 10 };
+      if (proveedorId) params.proveedor = proveedorId;
+      if (fechaDesde || fechaHasta) {
+        if (fechaDesde) params.fecha_desde = fechaDesde;
+        if (fechaHasta) params.fecha_hasta = fechaHasta;
+      } else if (mesRecaudacion) {
+        params.mes = mesRecaudacion;
+      }
+
+      const response = await dashboardApi.getMetrics(params);
       setData(response);
     } catch (err) {
       console.error('Error al cargar métricas del Dashboard:', err);
@@ -43,12 +60,21 @@ export default function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [proveedorId, fechaDesde, fechaHasta, mesRecaudacion]);
 
   useEffect(() => {
     let ignore = false;
+    const params = { limit: 10 };
+    if (proveedorId) params.proveedor = proveedorId;
+    if (fechaDesde || fechaHasta) {
+      if (fechaDesde) params.fecha_desde = fechaDesde;
+      if (fechaHasta) params.fecha_hasta = fechaHasta;
+    } else if (mesRecaudacion) {
+      params.mes = mesRecaudacion;
+    }
+
     dashboardApi
-      .getMetrics({ limit: 10 })
+      .getMetrics(params)
       .then((res) => {
         if (!ignore) {
           setData(res);
@@ -68,6 +94,13 @@ export default function DashboardPage() {
     return () => {
       ignore = true;
     };
+  }, [proveedorId, fechaDesde, fechaHasta, mesRecaudacion]);
+
+  // Cargar proveedores activos
+  useEffect(() => {
+    proveedoresApi.getAll({ activo: true })
+      .then(setProveedores)
+      .catch((err) => console.error('Error al cargar proveedores:', err));
   }, []);
 
   // Filtrado de rotación
@@ -194,6 +227,57 @@ export default function DashboardPage() {
           {refreshing ? 'Actualizando...' : 'Actualizar métricas'}
         </button>
       </PageHeader>
+
+      {/* Filtros de Recaudación */}
+      <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-gray-200/80 dark:border-zinc-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Mes</label>
+          <input
+            type="month"
+            value={mesRecaudacion}
+            disabled={Boolean(fechaDesde || fechaHasta)}
+            onChange={(e) => setMesRecaudacion(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Fecha desde</label>
+          <input
+            type="date"
+            value={fechaDesde}
+            onChange={(e) => {
+              setFechaDesde(e.target.value);
+              if (e.target.value) setMesRecaudacion('');
+            }}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Fecha hasta</label>
+          <input
+            type="date"
+            value={fechaHasta}
+            onChange={(e) => {
+              setFechaHasta(e.target.value);
+              if (e.target.value) setMesRecaudacion('');
+            }}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Proveedor</label>
+          <select
+            value={proveedorId}
+            onChange={(e) => setProveedorId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
+          >
+            <option value="">Todos los proveedores</option>
+            {proveedores.map((proveedor) => (
+              <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* Tarjetas de Resumen Global / KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

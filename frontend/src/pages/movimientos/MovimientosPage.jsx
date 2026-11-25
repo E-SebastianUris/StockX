@@ -106,6 +106,15 @@ export default function MovimientosPage() {
       return;
     }
 
+    if (formData.fecha_vencimiento_asociada) {
+      const hoy = new Date();
+      const fechaActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+      if (formData.fecha_vencimiento_asociada < fechaActual) {
+        setFormError('La fecha de vencimiento no puede haber pasado.');
+        return;
+      }
+    }
+
     setSaving(true);
 
     const payload = {

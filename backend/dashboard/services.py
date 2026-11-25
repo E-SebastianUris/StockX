@@ -1,5 +1,6 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
+
 from django.db.models import Sum, Count, Q, F, Max, OuterRef, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -222,19 +223,59 @@ def get_alertas_activas():
     }
 
 
-def get_resumen_general(alertas):
-    """
-    Retorna métricas globales para las tarjetas de KPIs del Dashboard.
-    """
-    ventas_agg = Venta.objects.aggregate(
-        total_recaudado=Coalesce(Sum('total'), Decimal('0.00')),
-        cantidad_ventas=Count('id'),
-    )
+def get_resumen_general(alertas, fecha_desde=None, fecha_hasta=None, mes=None, proveedor=None):
+    """Métricas generales y recaudación filtrada de ventas."""
+    hoy = timezone.now().date()
+
+    ventas = Venta.objects.all()
+    detalles = DetalleVenta.objects.select_related('venta', 'producto')
+
+    if fecha_desde or fecha_hasta:
+        if fecha_desde:
+            ventas = ventas.filter(fecha_venta__date__gte=fecha_desde)
+            detalles = detalles.filter(venta__fecha_venta__date__gte=fecha_desde)
+        if fecha_hasta:
+            ventas = ventas.filter(fecha_venta__date__lte=fecha_hasta)
+            detalles = detalles.filter(venta__fecha_venta__date__lte=fecha_hasta)
+    elif mes:
+        try:
+            from calendar import monthrange
+            anio, numero_mes = (int(parte) for parte in mes.split('-', 1))
+            ultimo_dia = monthrange(anio, numero_mes)[1]
+            inicio_mes = datetime(anio, numero_mes, 1).date()
+            fin_mes = datetime(anio, numero_mes, ultimo_dia).date()
+        except (TypeError, ValueError):
+            inicio_mes = None
+            fin_mes = None
+
+        if inicio_mes and fin_mes:
+            ventas = ventas.filter(fecha_venta__date__gte=inicio_mes, fecha_venta__date__lte=fin_mes)
+            detalles = detalles.filter(venta__fecha_venta__date__gte=inicio_mes, venta__fecha_venta__date__lte=fin_mes)
+    else:
+        ventas = ventas.filter(fecha_venta__date=hoy)
+        detalles = detalles.filter(venta__fecha_venta__date=hoy)
+
+    if proveedor:
+        detalles = detalles.filter(
+            producto__producto_proveedores__proveedor_id=proveedor
+        ).distinct()
+        total_recaudado = detalles.aggregate(
+            total=Coalesce(Sum('subtotal'), Decimal('0.00'))
+        )['total']
+        cantidad_ventas = detalles.values('venta_id').distinct().count()
+    else:
+        ventas_agg = ventas.aggregate(
+            total_recaudado=Coalesce(Sum('total'), Decimal('0.00')),
+            cantidad_ventas=Count('id'),
+        )
+        total_recaudado = ventas_agg['total_recaudado']
+        cantidad_ventas = ventas_agg['cantidad_ventas']
+
     total_productos = Producto.objects.filter(activo=True).count()
 
     return {
-        'total_ventas_recaudado': ventas_agg['total_recaudado'],
-        'cantidad_ventas': ventas_agg['cantidad_ventas'],
+        'total_ventas_recaudado': total_recaudado,
+        'cantidad_ventas': cantidad_ventas,
         'total_productos_activos': total_productos,
         'total_alertas_activas': alertas['total_alertas'],
     }

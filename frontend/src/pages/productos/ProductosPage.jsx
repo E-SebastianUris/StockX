@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { productosApi, categoriasApi } from '../../api/inventario';
+import { productosApi, categoriasApi, proveedoresApi } from '../../api/inventario';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PageHeader from '../../components/PageHeader';
+import { isFechaVencimientoValida } from './fechaVencimiento';
 
 export default function ProductosPage() {
   const { isAdmin } = useAuth();
 
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Alertas contadores
@@ -33,6 +35,9 @@ export default function ProductosPage() {
     nombre: '',
     codigo_barra: '',
     categoria_id: '',
+    proveedor_id: '',
+    fecha_compra: '',
+    cantidad_compra: '',
     descripcion: '',
     precio_venta: '0',
     stock_actual: '0',
@@ -49,7 +54,7 @@ export default function ProductosPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
-  // Cargar categorías para selector
+  // Cargar categorías y proveedores para selectores
   useEffect(() => {
     const fetchCategorias = async () => {
       try {
@@ -59,7 +64,18 @@ export default function ProductosPage() {
         console.error('Error al cargar categorías:', err);
       }
     };
+
+    const fetchProveedores = async () => {
+      try {
+        const data = await proveedoresApi.getAll({ activo: true });
+        setProveedores(data);
+      } catch (err) {
+        console.error('Error al cargar proveedores:', err);
+      }
+    };
+
     fetchCategorias();
+    fetchProveedores();
   }, []);
 
   // Cargar métricas de alertas activas
@@ -112,6 +128,9 @@ export default function ProductosPage() {
       nombre: '',
       codigo_barra: '',
       categoria_id: categorias[0]?.id ? String(categorias[0].id) : '',
+      proveedor_id: proveedores[0]?.id ? String(proveedores[0].id) : '',
+      fecha_compra: '',
+      cantidad_compra: '',
       descripcion: '',
       precio_venta: '0',
       stock_actual: '0',
@@ -132,6 +151,13 @@ export default function ProductosPage() {
         nombre: detail.nombre,
         codigo_barra: detail.codigo_barra || '',
         categoria_id: detail.categoria?.id ? String(detail.categoria.id) : '',
+        proveedor_id: detail.proveedor?.id
+          ? String(detail.proveedor.id)
+          : detail.producto_proveedores?.[0]?.proveedor?.id
+            ? String(detail.producto_proveedores[0].proveedor.id)
+            : '',
+        fecha_compra: detail.fecha_compra || '',
+        cantidad_compra: detail.cantidad_compra || '',
         descripcion: detail.descripcion || '',
         precio_venta: String(detail.precio_venta ?? 0),
         stock_actual: String(detail.stock_actual ?? 0),
@@ -168,6 +194,26 @@ export default function ProductosPage() {
       setFormError('Debe seleccionar una categoría.');
       return;
     }
+    if (!formData.proveedor_id) {
+      setFormError('Debe seleccionar un proveedor.');
+      return;
+    }
+    if (!isFechaVencimientoValida(formData.fecha_vencimiento)) {
+      setFormError('La fecha de vencimiento no puede ser anterior a la fecha actual.');
+      return;
+    }
+    if (formData.fecha_compra && !formData.cantidad_compra) {
+      setFormError('Debe informar la cantidad comprada junto con la fecha de compra.');
+      return;
+    }
+    if (formData.cantidad_compra && !formData.fecha_compra) {
+      setFormError('Debe informar la fecha de compra junto con la cantidad comprada.');
+      return;
+    }
+    if (formData.cantidad_compra && Number(formData.cantidad_compra) < 1) {
+      setFormError('La cantidad comprada debe ser mayor a cero.');
+      return;
+    }
 
     setSaving(true);
     setFormError('');
@@ -176,6 +222,9 @@ export default function ProductosPage() {
       nombre: formData.nombre.trim(),
       codigo_barra: formData.codigo_barra.trim() || null,
       categoria_id: Number(formData.categoria_id),
+      proveedor_id: Number(formData.proveedor_id),
+      fecha_compra: formData.fecha_compra || null,
+      cantidad_compra: formData.cantidad_compra ? Number(formData.cantidad_compra) : null,
       descripcion: formData.descripcion.trim(),
       precio_venta: Number(formData.precio_venta) || 0,
       stock_actual: parseInt(formData.stock_actual, 10) || 0,
@@ -677,6 +726,25 @@ export default function ProductosPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
+                  Proveedor <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  value={formData.proveedor_id}
+                  onChange={(e) => setFormData({ ...formData, proveedor_id: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
+                >
+                  <option value="">Seleccionar proveedor...</option>
+                  {proveedores.map((prov) => (
+                    <option key={prov.id} value={prov.id}>
+                      {prov.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Precio Costo solo lectura si editamos */}
               {editingItem && (
                 <div>
@@ -743,6 +811,38 @@ export default function ProductosPage() {
                   className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
+                  Fecha de compra <span className="text-gray-400">(opcional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.fecha_compra}
+                  onChange={(e) => setFormData({ ...formData, fecha_compra: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
+                  Cantidad comprada <span className="text-gray-400">(opcional)</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={formData.cantidad_compra}
+                  onChange={(e) => setFormData({ ...formData, cantidad_compra: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {formData.proveedor_id && (!formData.fecha_compra || !formData.cantidad_compra) && (
+                <p className="md:col-span-2 text-xs text-amber-700 dark:text-amber-400">
+                  Si no informás fecha y cantidad de compra, el proveedor seleccionado no quedará asociado en el historial ProductoProveedor.
+                </p>
+              )}
 
               <div className="flex items-center pt-5">
                 <input

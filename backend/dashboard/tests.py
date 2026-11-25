@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from authentication.models import Usuario
-from inventario.models import Categoria, Producto
+from inventario.models import Categoria, Producto, ProductoProveedor, Proveedor
 from ventas.models import Venta, DetalleVenta, MovimientoStock
 
 
@@ -219,6 +219,76 @@ class DashboardTests(APITestCase):
         )
         self.assertIsNotNone(urgente_item)
         self.assertEqual(urgente_item['estado_vencimiento'], 'URGENTE')
+
+    def test_recaudacion_por_dia_mes_rango_y_proveedor(self):
+        self.client.force_authenticate(user=self.admin)
+        proveedor_a = Proveedor.objects.create(nombre='Proveedor A')
+        proveedor_b = Proveedor.objects.create(nombre='Proveedor B')
+        producto_a = Producto.objects.create(
+            nombre='Producto A', categoria=self.categoria_golosinas,
+            precio_venta=Decimal('100.00'), stock_actual=10,
+        )
+        producto_b = Producto.objects.create(
+            nombre='Producto B', categoria=self.categoria_bebidas,
+            precio_venta=Decimal('200.00'), stock_actual=10,
+        )
+        ProductoProveedor.objects.create(
+            producto=producto_a, proveedor=proveedor_a,
+            cantidad_compra=10, fecha_compra=timezone.now().date(),
+        )
+        ProductoProveedor.objects.create(
+            producto=producto_b, proveedor=proveedor_b,
+            cantidad_compra=10, fecha_compra=timezone.now().date(),
+        )
+
+        venta = Venta.objects.create(
+            vendedor=self.admin, total=Decimal('300.00'), metodo_pago='EFECTIVO'
+        )
+        DetalleVenta.objects.create(
+            venta=venta, producto=producto_a, cantidad=1,
+            precio_unitario=Decimal('100.00'), subtotal=Decimal('100.00'),
+        )
+        DetalleVenta.objects.create(
+            venta=venta, producto=producto_b, cantidad=1,
+            precio_unitario=Decimal('200.00'), subtotal=Decimal('200.00'),
+        )
+
+        hoy = timezone.now().date()
+        mes = hoy.strftime('%Y-%m')
+
+        res_dia = self.client.get(reverse('dashboard:metricas'))
+        self.assertEqual(res_dia.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            Decimal(str(res_dia.data['resumen_general']['total_ventas_recaudado'])),
+            Decimal('4050.00'),
+        )
+
+        res_mes = self.client.get(reverse('dashboard:metricas'), {'mes': mes})
+        self.assertEqual(res_mes.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            Decimal(str(res_mes.data['resumen_general']['total_ventas_recaudado'])),
+            Decimal('4050.00'),
+        )
+
+        res_rango = self.client.get(reverse('dashboard:metricas'), {
+            'fecha_desde': hoy.isoformat(),
+            'fecha_hasta': hoy.isoformat(),
+        })
+        self.assertEqual(res_rango.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            Decimal(str(res_rango.data['resumen_general']['total_ventas_recaudado'])),
+            Decimal('4050.00'),
+        )
+
+        res_proveedor = self.client.get(reverse('dashboard:metricas'), {
+            'fecha_desde': hoy.isoformat(),
+            'fecha_hasta': hoy.isoformat(),
+            'proveedor': proveedor_a.id,
+        })
+        self.assertEqual(res_proveedor.status_code, status.HTTP_200_OK)
+        resumen = res_proveedor.data['resumen_general']
+        self.assertEqual(Decimal(str(resumen['total_ventas_recaudado'])), Decimal('100.00'))
+        self.assertEqual(resumen['cantidad_ventas'], 1)
 
 
 class DashboardCasosAdicionalesTests(APITestCase):
