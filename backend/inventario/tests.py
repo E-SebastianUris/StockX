@@ -30,6 +30,7 @@ class InventarioRolePermissionsTests(APITestCase):
             'precio_venta': '250.00',
             'stock_actual': 10,
             'stock_minimo': 3,
+            'proveedor_id': self.proveedor.id,
         }
 
     def test_unauthenticated_users_cannot_access_protected_endpoints(self):
@@ -136,3 +137,102 @@ class InventarioRolePermissionsTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['producto_proveedores'][0]['proveedor']['id'], self.proveedor.id)
+
+    def test_product_expiry_cannot_be_in_the_past(self):
+        self.authenticate(self.admin)
+        payload = self.producto_payload()
+        payload.update({
+            'fecha_vencimiento': '2020-01-01',
+            'proveedor_id': self.proveedor.id,
+        })
+
+        response = self.client.post(reverse('producto-list'), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('fecha_vencimiento', response.data)
+
+    def test_admin_can_create_product_with_supplier_without_fake_purchase(self):
+        self.authenticate(self.admin)
+        payload = self.producto_payload()
+        payload.update({
+            'fecha_vencimiento': '2030-12-31',
+            'proveedor_id': self.proveedor.id,
+        })
+
+        response = self.client.post(reverse('producto-list'), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        producto = Producto.objects.get(id=response.data['id'])
+        self.assertFalse(
+            ProductoProveedor.objects.filter(
+                producto=producto,
+                proveedor=self.proveedor,
+            ).exists()
+        )
+
+    def test_producto_nuevo_requiere_proveedor(self):
+        self.authenticate(self.admin)
+        payload = self.producto_payload()
+        payload.pop('proveedor_id', None)
+
+        response = self.client.post(reverse('producto-list'), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('proveedor_id', response.data)
+
+    def test_crear_producto_sin_compra_no_crea_producto_proveedor(self):
+        self.authenticate(self.admin)
+        payload = self.producto_payload()
+        payload['proveedor_id'] = self.proveedor.id
+
+        response = self.client.post(reverse('producto-list'), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        producto = Producto.objects.get(id=response.data['id'])
+        self.assertFalse(
+            ProductoProveedor.objects.filter(
+                producto=producto,
+                proveedor=self.proveedor,
+            ).exists()
+        )
+
+    def test_crear_producto_con_compra_real_crea_producto_proveedor(self):
+        self.authenticate(self.admin)
+        payload = self.producto_payload()
+        payload.update({
+            'proveedor_id': self.proveedor.id,
+            'fecha_compra': '2026-10-01',
+            'cantidad_compra': 10,
+        })
+
+        response = self.client.post(reverse('producto-list'), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        producto = Producto.objects.get(id=response.data['id'])
+        asociacion = ProductoProveedor.objects.get(
+            producto=producto,
+            proveedor=self.proveedor,
+        )
+        self.assertEqual(asociacion.cantidad_compra, 10)
+        self.assertEqual(str(asociacion.fecha_compra), '2026-10-01')
+
+    def test_compra_real_requiere_fecha_y_cantidad(self):
+        self.authenticate(self.admin)
+
+        solo_fecha = self.producto_payload()
+        solo_fecha.update({
+            'proveedor_id': self.proveedor.id,
+            'fecha_compra': '2026-10-01',
+        })
+        res_fecha = self.client.post(reverse('producto-list'), solo_fecha, format='json')
+        self.assertEqual(res_fecha.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cantidad_compra', res_fecha.data)
+
+        solo_cantidad = self.producto_payload()
+        solo_cantidad.update({
+            'proveedor_id': self.proveedor.id,
+            'cantidad_compra': 10,
+        })
+        res_cantidad = self.client.post(reverse('producto-list'), solo_cantidad, format='json')
+        self.assertEqual(res_cantidad.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('fecha_compra', res_cantidad.data)

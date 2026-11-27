@@ -30,7 +30,13 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
         try {
           setLoadingProductos(true);
           const data = await productosApi.getAll({ activo: true });
-          setProductosDisponibles(data || []);
+          const hoy = new Date();
+          const fechaActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+          const disponibles = (data || []).filter((producto) => {
+            const vencido = producto.fecha_vencimiento && producto.fecha_vencimiento < fechaActual;
+            return producto.stock_actual > 0 && !vencido;
+          });
+          setProductosDisponibles(disponibles);
         } catch (err) {
           console.error('Error al cargar productos para la venta:', err);
           setErrorGeneral('No se pudieron cargar los productos disponibles.');

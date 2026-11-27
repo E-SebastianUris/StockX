@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -33,10 +35,59 @@ class DashboardMetricsView(APIView):
         except (ValueError, TypeError):
             limit_top = 10
 
+        fecha_desde = request.query_params.get('fecha_desde')
+        fecha_hasta = request.query_params.get('fecha_hasta')
+        mes = request.query_params.get('mes')
+        proveedor = request.query_params.get('proveedor')
+        historico = request.query_params.get('historico')
+        es_historico = historico is not None and str(historico).lower() in ['true', '1', 't', 'si', 'yes']
+
+        try:
+            if fecha_desde:
+                fecha_desde = datetime.strptime(fecha_desde, '%Y-%m-%d').date()
+            if fecha_hasta:
+                fecha_hasta = datetime.strptime(fecha_hasta, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'detail': 'Las fechas deben tener formato YYYY-MM-DD.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if fecha_desde and fecha_hasta and fecha_desde > fecha_hasta:
+            return Response(
+                {'detail': 'fecha_desde no puede ser posterior a fecha_hasta.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if mes:
+            try:
+                datetime.strptime(mes, '%Y-%m')
+            except ValueError:
+                return Response(
+                    {'detail': 'El mes debe tener formato YYYY-MM.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if proveedor:
+            try:
+                proveedor = int(proveedor)
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'El proveedor debe ser un identificador numérico.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         alertas_data = get_alertas_activas()
         mas_vendidos_data = get_productos_mas_vendidos(limit=limit_top)
         rotacion_data = get_rotacion_productos()
-        resumen_data = get_resumen_general(alertas_data)
+        resumen_data = get_resumen_general(
+            alertas_data,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            mes=None if (fecha_desde or fecha_hasta) else mes,
+            proveedor=proveedor,
+            historico=es_historico,
+        )
 
         payload = {
             'resumen_general': resumen_data,

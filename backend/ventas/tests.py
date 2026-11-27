@@ -311,3 +311,58 @@ class VentasYMovimientosTests(APITestCase):
         self.assertEqual(res_detail.data['id'], venta_id)
         self.assertEqual(len(res_detail.data['detalles']), 1)
         self.assertEqual(res_detail.data['detalles'][0]['producto_nombre'], 'Alfajor Chocolate')
+
+    def test_ingreso_rechaza_fecha_de_vencimiento_vencida(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.post(reverse('movimientostock-list'), {
+            'producto_id': self.producto_a.id,
+            'tipo': 'INGRESO',
+            'cantidad': 5,
+            'motivo': 'Ingreso vencido',
+            'fecha_vencimiento_asociada': '2020-01-01',
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('fecha_vencimiento_asociada', res.data)
+
+    def test_venta_rechaza_producto_vencido(self):
+        self.producto_a.fecha_vencimiento = '2020-01-01'
+        self.producto_a.save(update_fields=['fecha_vencimiento'])
+        self.client.force_authenticate(user=self.vendedor)
+
+        res = self.client.post(reverse('venta-list'), {
+            'detalles': [{'producto_id': self.producto_a.id, 'cantidad': 1}],
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detalles', res.data)
+
+    def test_venta_rechaza_producto_sin_stock(self):
+        self.producto_a.stock_actual = 0
+        self.producto_a.save(update_fields=['stock_actual'])
+        self.client.force_authenticate(user=self.vendedor)
+
+        res = self.client.post(reverse('venta-list'), {
+            'detalles': [{'producto_id': self.producto_a.id, 'cantidad': 1}],
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detalles', res.data)
+
+    def test_filtro_ventas_rechaza_fecha_invalida(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(reverse('venta-list'), {'fecha_desde': '25-11-2026'})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_filtro_ventas_rechaza_rango_invertido(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(reverse('venta-list'), {
+            'fecha_desde': '2026-11-25',
+            'fecha_hasta': '2026-11-20',
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_filtro_ventas_predeterminado_muestra_dia_actual(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(reverse('venta-list'))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)

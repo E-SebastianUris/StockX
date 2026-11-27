@@ -1,4 +1,5 @@
 from rest_framework import viewsets, mixins, filters, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from .models import Venta, MovimientoStock
@@ -9,6 +10,8 @@ from .serializers import (
     MovimientoStockSerializer,
     MovimientoStockCreateSerializer,
 )
+from datetime import datetime
+from django.utils import timezone
 
 
 class VentaViewSet(
@@ -41,10 +44,30 @@ class VentaViewSet(
             qs = qs.filter(vendedor_id=vendedor_id)
         if metodo_pago := params.get('metodo_pago'):
             qs = qs.filter(metodo_pago=metodo_pago)
-        if fecha_desde := params.get('fecha_desde'):
-            qs = qs.filter(fecha_venta__date__gte=fecha_desde)
-        if fecha_hasta := params.get('fecha_hasta'):
-            qs = qs.filter(fecha_venta__date__lte=fecha_hasta)
+        fecha_desde = params.get('fecha_desde')
+        fecha_hasta = params.get('fecha_hasta')
+
+        fecha_desde_obj = None
+        fecha_hasta_obj = None
+
+        try:
+            if fecha_desde:
+                fecha_desde_obj = datetime.strptime(fecha_desde, '%Y-%m-%d').date()
+            if fecha_hasta:
+                fecha_hasta_obj = datetime.strptime(fecha_hasta, '%Y-%m-%d').date()
+        except ValueError:
+            raise ValidationError({'detail': 'Las fechas deben tener formato YYYY-MM-DD.'})
+
+        if fecha_desde_obj and fecha_hasta_obj and fecha_desde_obj > fecha_hasta_obj:
+            raise ValidationError({'detail': 'fecha_desde no puede ser posterior a fecha_hasta.'})
+
+        if fecha_desde or fecha_hasta:
+            if fecha_desde_obj:
+                qs = qs.filter(fecha_venta__date__gte=fecha_desde_obj)
+            if fecha_hasta_obj:
+                qs = qs.filter(fecha_venta__date__lte=fecha_hasta_obj)
+        else:
+            qs = qs.filter(fecha_venta__date=timezone.now().date())
 
         return qs
 
