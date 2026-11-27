@@ -40,6 +40,9 @@ class VentaViewSet(
         )
         params = self.request.query_params
 
+        if self.action != 'list':
+            return qs
+
         if vendedor_id := params.get('vendedor'):
             qs = qs.filter(vendedor_id=vendedor_id)
         if metodo_pago := params.get('metodo_pago'):
@@ -66,7 +69,7 @@ class VentaViewSet(
                 qs = qs.filter(fecha_venta__date__gte=fecha_desde_obj)
             if fecha_hasta_obj:
                 qs = qs.filter(fecha_venta__date__lte=fecha_hasta_obj)
-        else:
+        elif params.get('historico', '').lower() not in ('true', '1', 'yes'):
             qs = qs.filter(fecha_venta__date=timezone.now().date())
 
         return qs
@@ -114,10 +117,22 @@ class MovimientoStockViewSet(
             qs = qs.filter(producto_id=producto_id)
         if tipo := params.get('tipo'):
             qs = qs.filter(tipo=tipo.upper())
-        if fecha_desde := params.get('fecha_desde'):
-            qs = qs.filter(fecha_movimiento__date__gte=fecha_desde)
-        if fecha_hasta := params.get('fecha_hasta'):
-            qs = qs.filter(fecha_movimiento__date__lte=fecha_hasta)
+        fecha_desde = params.get('fecha_desde')
+        fecha_hasta = params.get('fecha_hasta')
+
+        try:
+            fecha_desde_obj = datetime.strptime(fecha_desde, '%Y-%m-%d').date() if fecha_desde else None
+            fecha_hasta_obj = datetime.strptime(fecha_hasta, '%Y-%m-%d').date() if fecha_hasta else None
+        except ValueError:
+            raise ValidationError({'detail': 'Las fechas deben tener formato YYYY-MM-DD.'})
+
+        if fecha_desde_obj and fecha_hasta_obj and fecha_desde_obj > fecha_hasta_obj:
+            raise ValidationError({'detail': 'fecha_desde no puede ser posterior a fecha_hasta.'})
+
+        if fecha_desde_obj:
+            qs = qs.filter(fecha_movimiento__date__gte=fecha_desde_obj)
+        if fecha_hasta_obj:
+            qs = qs.filter(fecha_movimiento__date__lte=fecha_hasta_obj)
 
         return qs
 

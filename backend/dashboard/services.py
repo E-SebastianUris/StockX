@@ -8,33 +8,60 @@ from django.utils import timezone
 from inventario.models import Producto
 from ventas.models import Venta, DetalleVenta, MovimientoStock
 
+MAX_DASHBOARD_LIMIT = 100
 
-def get_productos_mas_vendidos(limit=10):
+
+def validar_limit_servicio(limit, allow_none=False):
+    if limit is None:
+        if allow_none:
+            return None
+        raise ValueError('El límite debe ser un entero positivo entre 1 y 100.')
+    if isinstance(limit, bool):
+        raise ValueError('El límite debe ser un entero positivo entre 1 y 100.')
+    if not isinstance(limit, int) or limit < 1 or limit > MAX_DASHBOARD_LIMIT:
+        raise ValueError('El límite debe ser un entero positivo entre 1 y 100.')
+    return limit
+
+
+def get_productos_mas_vendidos(limit=10, fecha_desde=None, fecha_hasta=None, proveedor=None):
     """
     Obtiene los productos con mayor cantidad vendida y monto recaudado.
     Equivalente a vista_productos_mas_vendidos en SQL.
+    Acepta filtros opcionales de período (fecha_desde, fecha_hasta) y proveedor.
     """
+    detalle_filtros = Q(producto=OuterRef('pk'))
+    if fecha_desde:
+        detalle_filtros &= Q(venta__fecha_venta__date__gte=fecha_desde)
+    if fecha_hasta:
+        detalle_filtros &= Q(venta__fecha_venta__date__lte=fecha_hasta)
+    if proveedor:
+        detalle_filtros &= Q(producto__producto_proveedores__proveedor_id=proveedor)
+
     cant_sub = (
-        DetalleVenta.objects.filter(producto=OuterRef('pk'))
+        DetalleVenta.objects.filter(detalle_filtros)
         .values('producto')
         .annotate(total=Sum('cantidad'))
         .values('total')[:1]
     )
     rec_sub = (
-        DetalleVenta.objects.filter(producto=OuterRef('pk'))
+        DetalleVenta.objects.filter(detalle_filtros)
         .values('producto')
         .annotate(total=Sum('subtotal'))
         .values('total')[:1]
     )
     ventas_sub = (
-        DetalleVenta.objects.filter(producto=OuterRef('pk'))
+        DetalleVenta.objects.filter(detalle_filtros)
         .values('producto')
         .annotate(total=Count('venta_id', distinct=True))
         .values('total')[:1]
     )
 
+    productos_qs = Producto.objects.filter(activo=True)
+    if proveedor:
+        productos_qs = productos_qs.filter(producto_proveedores__proveedor_id=proveedor).distinct()
+
     productos = (
-        Producto.objects.filter(activo=True)
+        productos_qs
         .select_related('categoria')
         .annotate(
             total_unidades_vendidas=Coalesce(Subquery(cant_sub), 0),
@@ -44,6 +71,7 @@ def get_productos_mas_vendidos(limit=10):
         .order_by('-total_unidades_vendidas', '-total_recaudado')
     )
 
+    limit = validar_limit_servicio(limit)
     if limit:
         productos = productos[:limit]
 
@@ -61,20 +89,34 @@ def get_productos_mas_vendidos(limit=10):
     ]
 
 
-def get_rotacion_productos(limit=None):
+def get_rotacion_productos(limit=None, fecha_desde=None, fecha_hasta=None, proveedor=None):
     """
     Calcula la velocidad de salida (ventas) y reposición (ingresos) por producto,
     así como el índice de rotación y su clasificación comercial.
     Utiliza subconsultas para evitar productos cartesianos entre ventas y movimientos.
+    Acepta filtros opcionales de período (fecha_desde, fecha_hasta) y proveedor.
     """
+    salidas_filtros = Q(producto=OuterRef('pk'))
+    ingresos_filtros = Q(producto=OuterRef('pk'), tipo='INGRESO')
+
+    if fecha_desde:
+        salidas_filtros &= Q(venta__fecha_venta__date__gte=fecha_desde)
+        ingresos_filtros &= Q(fecha_movimiento__date__gte=fecha_desde)
+    if fecha_hasta:
+        salidas_filtros &= Q(venta__fecha_venta__date__lte=fecha_hasta)
+        ingresos_filtros &= Q(fecha_movimiento__date__lte=fecha_hasta)
+    if proveedor:
+        salidas_filtros &= Q(producto__producto_proveedores__proveedor_id=proveedor)
+        ingresos_filtros &= Q(producto__producto_proveedores__proveedor_id=proveedor)
+
     salidas_sub = (
-        DetalleVenta.objects.filter(producto=OuterRef('pk'))
+        DetalleVenta.objects.filter(salidas_filtros)
         .values('producto')
         .annotate(total=Sum('cantidad'))
         .values('total')[:1]
     )
     ingresos_sub = (
-        MovimientoStock.objects.filter(producto=OuterRef('pk'), tipo='INGRESO')
+        MovimientoStock.objects.filter(ingresos_filtros)
         .values('producto')
         .annotate(total=Sum('cantidad'))
         .values('total')[:1]
@@ -86,8 +128,12 @@ def get_rotacion_productos(limit=None):
         .values('ultimo')[:1]
     )
 
+    productos_qs = Producto.objects.filter(activo=True)
+    if proveedor:
+        productos_qs = productos_qs.filter(producto_proveedores__proveedor_id=proveedor).distinct()
+
     productos = (
-        Producto.objects.filter(activo=True)
+        productos_qs
         .select_related('categoria')
         .annotate(
             unidades_vendidas=Coalesce(Subquery(salidas_sub), 0),
@@ -133,6 +179,7 @@ def get_rotacion_productos(limit=None):
             'ultimo_movimiento': p.ultimo_mov,
         })
 
+    limit = validar_limit_servicio(limit, allow_none=True)
     if limit:
         return resultado[:limit]
     return resultado

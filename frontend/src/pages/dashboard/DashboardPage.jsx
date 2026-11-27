@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import { dashboardApi } from '../../api/dashboard';
 import { proveedoresApi } from '../../api/inventario';
+import { getDateRangeError, isValidFilterDate } from '../../utils/dateFilters';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('es-AR', {
@@ -47,6 +48,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [filterError, setFilterError] = useState('');
   const [data, setData] = useState(null);
 
   // Filtros interactivos para rotación
@@ -110,12 +112,26 @@ export default function DashboardPage() {
     }
     setError(null);
 
+    const dateRangeError = getDateRangeError(fechaDesde, fechaHasta);
+    if (dateRangeError === 'incomplete') {
+      setRefreshing(false);
+      return;
+    }
+
+    if (dateRangeError === 'inverted') {
+      setFilterError('La fecha desde no puede ser posterior a la fecha hasta.');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
+      setFilterError('');
       const params = { limit: 10 };
       if (proveedorId) params.proveedor = proveedorId;
-      if (fechaDesde || fechaHasta) {
-        if (fechaDesde) params.fecha_desde = fechaDesde;
-        if (fechaHasta) params.fecha_hasta = fechaHasta;
+      if (isValidFilterDate(fechaDesde) || isValidFilterDate(fechaHasta)) {
+        if (isValidFilterDate(fechaDesde)) params.fecha_desde = fechaDesde;
+        if (isValidFilterDate(fechaHasta)) params.fecha_hasta = fechaHasta;
       } else {
         params.historico = 'true';
       }
@@ -135,38 +151,11 @@ export default function DashboardPage() {
   }, [proveedorId, fechaDesde, fechaHasta]);
 
   useEffect(() => {
-    let ignore = false;
-    const params = { limit: 10 };
-    if (proveedorId) params.proveedor = proveedorId;
-    if (fechaDesde || fechaHasta) {
-      if (fechaDesde) params.fecha_desde = fechaDesde;
-      if (fechaHasta) params.fecha_hasta = fechaHasta;
-    } else {
-      params.historico = 'true';
-    }
-
-    dashboardApi
-      .getMetrics(params)
-      .then((res) => {
-        if (!ignore) {
-          setData(res);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!ignore) {
-          setError(
-            err.response?.data?.detail ||
-              'No se pudieron cargar las métricas del dashboard. Verificá la conexión con el servidor.'
-          );
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [proveedorId, fechaDesde, fechaHasta]);
+    const timer = setTimeout(() => {
+      fetchDashboardData();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [fetchDashboardData]);
 
   // Cargar proveedores activos
   useEffect(() => {
@@ -469,6 +458,11 @@ export default function DashboardPage() {
             </select>
           </div>
         </div>
+        {filterError && (
+          <p className="text-xs font-medium text-rose-600 dark:text-rose-400" role="alert">
+            {filterError}
+          </p>
+        )}
       </div>
 
       {/* Tarjetas de Resumen Global / KPIs */}
@@ -579,7 +573,7 @@ export default function DashboardPage() {
                     Productos Más Vendidos
                   </h2>
                   <p className="text-xs text-gray-500 dark:text-zinc-400">
-                    Ranking de artículos por volumen de ventas y facturación
+                    Ranking de artículos por volumen de ventas y facturación en el período seleccionado
                   </p>
                 </div>
               </div>
@@ -856,7 +850,7 @@ export default function DashboardPage() {
                 Velocidad y Rotación de Mercadería
               </h2>
               <p className="text-xs text-gray-500 dark:text-zinc-400">
-                Tasa de salida de productos (ventas) versus velocidad de reposición (compras/ingresos)
+                Tasa de salida de productos (ventas) versus velocidad de reposición (ingresos) en el período seleccionado
               </p>
             </div>
           </div>

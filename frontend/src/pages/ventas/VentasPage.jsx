@@ -1,35 +1,22 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useState, useEffect, useCallback } from 'react';
 import { ventasApi, METODOS_PAGO } from '../../api/ventas';
 import VentaDetalleModal from './VentaDetalleModal';
 import NuevaVentaModal from './NuevaVentaModal';
 import PageHeader from '../../components/PageHeader';
+import { getDateRangeError, isValidFilterDate } from '../../utils/dateFilters';
 
 export default function VentasPage() {
-  const { user } = useAuth();
-
   const [ventas, setVentas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [permissionError, setPermissionError] = useState(false);
 
   // Filtros
-  const [fechaDesde, setFechaDesde] = useState(() => {
-    const hoy = new Date();
-    const anio = hoy.getFullYear();
-    const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-    const dia = String(hoy.getDate()).padStart(2, '0');
-    return `${anio}-${mes}-${dia}`;
-  });
-  const [fechaHasta, setFechaHasta] = useState(() => {
-    const hoy = new Date();
-    const anio = hoy.getFullYear();
-    const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-    const dia = String(hoy.getDate()).padStart(2, '0');
-    return `${anio}-${mes}-${dia}`;
-  });
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [selectedMetodo, setSelectedMetodo] = useState('');
   const [selectedVendedor, setSelectedVendedor] = useState('');
+  const [vendedoresCatalogo, setVendedoresCatalogo] = useState([]);
 
   // Modal Detalle
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
@@ -42,19 +29,51 @@ export default function VentasPage() {
 
   // Cargar ventas con filtros
   const loadVentas = useCallback(async () => {
+    // Los inputs nativos emiten años intermedios como 0002-..., que no deben
+    // disparar una consulta ni reemplazar el buffer de escritura del navegador.
+    const dateRangeError = getDateRangeError(fechaDesde, fechaHasta);
+    if (dateRangeError === 'incomplete') {
+      return;
+    }
+
+    if (dateRangeError === 'inverted') {
+      setErrorMsg('La fecha desde no puede ser posterior a la fecha hasta.');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setErrorMsg('');
       setPermissionError(false);
 
       const params = {};
-      if (fechaDesde) params.fecha_desde = fechaDesde;
-      if (fechaHasta) params.fecha_hasta = fechaHasta;
+
+      if (isValidFilterDate(fechaDesde)) params.fecha_desde = fechaDesde;
+      if (isValidFilterDate(fechaHasta)) params.fecha_hasta = fechaHasta;
+
+      // Si ambas están vacías, solicitamos el histórico completo
+      if (!fechaDesde && !fechaHasta) {
+        params.historico = 'true';
+      }
+
       if (selectedMetodo) params.metodo_pago = selectedMetodo;
       if (selectedVendedor) params.vendedor = selectedVendedor;
 
       const data = await ventasApi.getAll(params);
-      setVentas(data || []);
+      const listaVentas = data || [];
+      setVentas(listaVentas);
+
+      // Actualizar catálogo acumulativo de vendedores
+      setVendedoresCatalogo((prev) => {
+        const map = new Map(prev.map((v) => [v.id, v.username]));
+        listaVentas.forEach((v) => {
+          if (v.vendedor && typeof v.vendedor === 'object' && v.vendedor.id) {
+            map.set(v.vendedor.id, v.vendedor.username || `Usuario #${v.vendedor.id}`);
+          }
+        });
+        return Array.from(map.entries()).map(([id, username]) => ({ id, username }));
+      });
     } catch (err) {
       console.error('Error al cargar ventas:', err);
       if (err.response?.status === 403) {
@@ -74,17 +93,6 @@ export default function VentasPage() {
     }, 250);
     return () => clearTimeout(timer);
   }, [loadVentas]);
-
-  // Lista única de vendedores detectados para el filtro
-  const vendedoresDisponibles = useMemo(() => {
-    const map = new Map();
-    ventas.forEach((v) => {
-      if (v.vendedor && typeof v.vendedor === 'object' && v.vendedor.id) {
-        map.set(v.vendedor.id, v.vendedor.username || `Usuario #${v.vendedor.id}`);
-      }
-    });
-    return Array.from(map.entries()).map(([id, username]) => ({ id, username }));
-  }, [ventas]);
 
   // Abrir detalle de una venta
   const handleVerDetalle = async (ventaId) => {
@@ -260,28 +268,18 @@ export default function VentasPage() {
             <label className="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
               Vendedor
             </label>
-            {vendedoresDisponibles.length > 0 ? (
-              <select
-                value={selectedVendedor}
-                onChange={(e) => setSelectedVendedor(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
-              >
-                <option value="">Todos los vendedores</option>
-                {vendedoresDisponibles.map((vend) => (
-                  <option key={vend.id} value={vend.id}>
-                    {vend.username}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                placeholder="ID de vendedor..."
-                value={selectedVendedor}
-                onChange={(e) => setSelectedVendedor(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
-              />
-            )}
+            <select
+              value={selectedVendedor}
+              onChange={(e) => setSelectedVendedor(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
+            >
+              <option value="">Todos los vendedores</option>
+              {vendedoresCatalogo.map((vend) => (
+                <option key={vend.id} value={vend.id}>
+                  {vend.username}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -303,19 +301,19 @@ export default function VentasPage() {
           <table className="min-w-full divide-y divide-gray-100 dark:divide-zinc-800/70 text-sm">
             <thead className="bg-gray-50/70 dark:bg-zinc-800/50 text-[11px] uppercase font-bold tracking-wider text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
               <tr>
-                <th scope="col" className="px-5 py-3.5 text-left">Ticket</th>
-                <th scope="col" className="px-5 py-3.5 text-left">Fecha y Hora</th>
-                <th scope="col" className="px-5 py-3.5 text-left">Vendedor</th>
-                <th scope="col" className="px-5 py-3.5 text-center">Método</th>
-                <th scope="col" className="px-5 py-3.5 text-left">Observaciones</th>
-                <th scope="col" className="px-5 py-3.5 text-right">Total</th>
-                <th scope="col" className="px-5 py-3.5 text-center">Acciones</th>
+                <th scope="col" className="px-3.5 py-3.5 text-left">Ticket</th>
+                <th scope="col" className="px-3.5 py-3.5 text-left">Fecha y Hora</th>
+                <th scope="col" className="px-3.5 py-3.5 text-left">Vendedor</th>
+                <th scope="col" className="px-3.5 py-3.5 text-center">Método</th>
+                <th scope="col" className="px-3.5 py-3.5 text-left">Observaciones</th>
+                <th scope="col" className="px-3.5 py-3.5 text-right">Total</th>
+                <th scope="col" className="px-3.5 py-3.5 text-center sticky right-0 bg-gray-50/95 dark:bg-zinc-800/95 backdrop-blur-xs shadow-xs">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/70">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-5 py-12 text-center text-gray-400 dark:text-zinc-500">
+                  <td colSpan="7" className="px-3.5 py-12 text-center text-gray-400 dark:text-zinc-500">
                     <div className="flex justify-center items-center space-x-2">
                       <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                       <span>Cargando ventas...</span>
@@ -324,13 +322,13 @@ export default function VentasPage() {
                 </tr>
               ) : permissionError ? (
                 <tr>
-                  <td colSpan="7" className="px-5 py-8 text-center text-red-500 font-medium">
+                  <td colSpan="7" className="px-3.5 py-8 text-center text-red-500 font-medium">
                     No tenés los permisos requeridos para consultar el historial de ventas.
                   </td>
                 </tr>
               ) : ventas.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-5 py-12 text-center text-gray-400 dark:text-zinc-500">
+                  <td colSpan="7" className="px-3.5 py-12 text-center text-gray-400 dark:text-zinc-500">
                     <p className="font-semibold text-gray-600 dark:text-zinc-300">No se encontraron ventas registradas.</p>
                     <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
                       Podés registrar una nueva venta usando el botón superior "Nueva Venta".
@@ -340,28 +338,28 @@ export default function VentasPage() {
               ) : (
                 ventas.map((v) => (
                   <tr key={v.id} className="hover:bg-gray-50/60 dark:hover:bg-zinc-800/40 transition">
-                    <td className="px-5 py-4 font-bold text-gray-900 dark:text-zinc-100">
+                    <td className="px-3.5 py-3.5 font-bold text-gray-900 dark:text-zinc-100">
                       #{v.id}
                     </td>
-                    <td className="px-5 py-4 text-gray-600 dark:text-zinc-300 font-mono text-xs whitespace-nowrap">
+                    <td className="px-3.5 py-3.5 text-gray-600 dark:text-zinc-300 font-mono text-xs whitespace-nowrap">
                       {formatearFecha(v.fecha_venta)}
                     </td>
-                    <td className="px-5 py-4 text-gray-800 dark:text-zinc-200 font-medium">
+                    <td className="px-3.5 py-3.5 text-gray-800 dark:text-zinc-200 font-medium">
                       {v.vendedor?.username || v.vendedor || '-'}
                     </td>
-                    <td className="px-5 py-4 text-center whitespace-nowrap">
+                    <td className="px-3.5 py-3.5 text-center whitespace-nowrap">
                       {getMetodoBadge(v.metodo_pago)}
                     </td>
-                    <td className="px-5 py-4 text-gray-500 dark:text-zinc-400 text-xs max-w-xs truncate" title={v.observaciones}>
+                    <td className="px-3.5 py-3.5 text-gray-500 dark:text-zinc-400 text-xs max-w-xs truncate" title={v.observaciones}>
                       {v.observaciones || <span className="text-gray-300 dark:text-zinc-600 italic">Sin observaciones</span>}
                     </td>
-                    <td className="px-5 py-4 text-right font-black text-gray-900 dark:text-zinc-100 font-mono text-base">
+                    <td className="px-3.5 py-3.5 text-right font-black text-gray-900 dark:text-zinc-100 font-mono text-base">
                       ${Number(v.total).toFixed(2)}
                     </td>
-                    <td className="px-5 py-4 text-center whitespace-nowrap">
+                    <td className="px-3.5 py-3.5 text-center whitespace-nowrap sticky right-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xs">
                       <button
                         onClick={() => handleVerDetalle(v.id)}
-                        className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700/60 shadow-xs transition space-x-1"
+                        className="inline-flex items-center px-2 py-1 text-xs font-semibold text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700/60 shadow-xs transition space-x-1"
                         title="Ver detalle de la venta"
                       >
                         <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

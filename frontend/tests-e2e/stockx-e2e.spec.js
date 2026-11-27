@@ -60,28 +60,30 @@ test.describe.serial('Pruebas E2E StockX — Iteración 3', () => {
     await page.goto('/dashboard');
     await page.waitForURL('**/dashboard');
 
-    // 3. Asegurarse de que la sección de Alertas Comerciales esté visible
-    await expect(page.getByText('Alertas Comerciales')).toBeVisible();
+    // 3. Localizar el panel específico de Alertas Comerciales
+    const panelAlertas = page.locator('section', { has: page.locator('h2', { hasText: 'Alertas Comerciales' }) });
+    await expect(panelAlertas).toBeVisible();
 
-    // Pestaña Stock activa por defecto
-    const stockTab = page.locator('button', { hasText: 'Stock' });
+    // 4. Asegurar selección explícita de la pestaña Stock
+    const stockTab = panelAlertas.locator('button', { hasText: 'Stock' });
     await expect(stockTab).toBeVisible();
+    await stockTab.click();
 
-    // 4. Verificar alerta de Coca Cola 500ml (4/10)
-    const cocaCard = page.locator('div', { hasText: 'Coca Cola 500ml' }).filter({ hasText: 'Stock:' }).first();
+    // 5. Verificar alerta de Coca Cola 500ml (4/10)
+    const cocaCard = panelAlertas.locator('div', { hasText: 'Coca Cola 500ml' }).filter({ hasText: 'Stock:' }).first();
     await expect(cocaCard).toBeVisible();
     await expect(cocaCard).toContainText('4');
     await expect(cocaCard).toContainText('10');
 
-    // 5. Verificar alerta de Turrón de Maní Arcor 25g (0/15)
-    const turronCard = page.locator('div', { hasText: 'Turr' }).filter({ hasText: 'Stock:' }).first();
+    // 6. Verificar alerta de Turrón de Maní Arcor 25g (0/15)
+    const turronCard = panelAlertas.locator('div', { hasText: 'Turr' }).filter({ hasText: 'Stock:' }).first();
     await expect(turronCard).toBeVisible();
     await expect(turronCard).toContainText('0');
     await expect(turronCard).toContainText('15');
     await expect(turronCard).toContainText('SIN STOCK');
 
-    // 6. Captura de pantalla de evidencia
-    await page.screenshot({ path: path.join(EVIDENCIAS_DIR, 'e2e-02-alertas-stock.png'), fullPage: true });
+    // 7. Captura de pantalla focalizada exclusivamente en el panel de Alertas Comerciales
+    await panelAlertas.screenshot({ path: path.join(EVIDENCIAS_DIR, 'e2e-02-alertas-stock.png') });
   });
 
   test('E2E-03: Venta exitosa de 2 Alfajores y 1 Papas Lays', async ({ page }) => {
@@ -98,7 +100,6 @@ test.describe.serial('Pruebas E2E StockX — Iteración 3', () => {
     await expect(page.getByText('Registrar Nueva Venta')).toBeVisible();
 
     // 4. Localizar el select de producto DENTRO del modal
-    const modal = page.locator('div:has(> div:has-text("Registrar Nueva Venta"))');
     const selectProducto = page.locator('select', { has: page.locator('option', { hasText: 'Seleccionar producto disponible' }) });
     const cantidadInput = page.locator('div:has(> label:has-text("Cantidad")) input[type="number"]');
 

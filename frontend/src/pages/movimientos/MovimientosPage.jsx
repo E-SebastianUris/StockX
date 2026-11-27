@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { movimientosApi, TIPOS_MOVIMIENTO, TIPOS_MOVIMIENTO_FILTRO } from '../../api/movimientos';
 import { productosApi } from '../../api/inventario';
 import Modal from '../../components/Modal';
 import PageHeader from '../../components/PageHeader';
+import { getDateRangeError, isValidFilterDate } from '../../utils/dateFilters';
 
 // Helpers de fecha para presets
 const getFechaLocal = (d = new Date()) => {
@@ -36,6 +37,7 @@ export default function MovimientosPage() {
   const [selectedTipo, setSelectedTipo] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
+  const [filterError, setFilterError] = useState('');
 
   // Filtro de búsqueda rápida y paginación
   const [searchQuery, setSearchQuery] = useState('');
@@ -103,13 +105,26 @@ export default function MovimientosPage() {
 
   // Cargar historial de movimientos
   const loadMovimientos = useCallback(async () => {
+    const dateRangeError = getDateRangeError(fechaDesde, fechaHasta);
+    if (dateRangeError === 'incomplete') {
+      return;
+    }
+
+    if (dateRangeError === 'inverted') {
+      setFilterError('La fecha desde no puede ser posterior a la fecha hasta.');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
+      setFilterError('');
       const params = {};
+
       if (selectedProducto) params.producto = selectedProducto;
       if (selectedTipo) params.tipo = selectedTipo;
-      if (fechaDesde) params.fecha_desde = fechaDesde;
-      if (fechaHasta) params.fecha_hasta = fechaHasta;
+      if (isValidFilterDate(fechaDesde)) params.fecha_desde = fechaDesde;
+      if (isValidFilterDate(fechaHasta)) params.fecha_hasta = fechaHasta;
 
       const data = await movimientosApi.getAll(params);
       setMovimientos(data || []);
@@ -593,6 +608,11 @@ export default function MovimientosPage() {
             />
           </div>
         </div>
+        {filterError && (
+          <p className="text-xs font-medium text-rose-600 dark:text-rose-400" role="alert">
+            {filterError}
+          </p>
+        )}
       </div>
 
       {/* Tabla de Movimientos Paginada */}
@@ -612,26 +632,26 @@ export default function MovimientosPage() {
               <table className="w-full text-left text-sm text-gray-600 dark:text-zinc-300">
                 <thead className="bg-gray-50/70 dark:bg-zinc-800/50 text-[11px] uppercase font-bold tracking-wider text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
                   <tr>
-                    <th className="px-6 py-3.5">Fecha y Hora</th>
-                    <th className="px-6 py-3.5">Producto</th>
-                    <th className="px-6 py-3.5">Tipo</th>
-                    <th className="px-6 py-3.5 text-right">Cantidad</th>
-                    <th className="px-6 py-3.5">Motivo / Venta</th>
-                    <th className="px-6 py-3.5">Venc. Asociado</th>
-                    <th className="px-6 py-3.5">Registrado Por</th>
+                    <th className="px-3.5 py-3.5">Fecha y Hora</th>
+                    <th className="px-3.5 py-3.5">Producto</th>
+                    <th className="px-3.5 py-3.5">Tipo</th>
+                    <th className="px-3.5 py-3.5 text-right">Cantidad</th>
+                    <th className="px-3.5 py-3.5">Motivo / Venta</th>
+                    <th className="px-3.5 py-3.5">Venc. Asociado</th>
+                    <th className="px-3.5 py-3.5">Registrado Por</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/70">
                   {paginatedMovimientos.map((mov) => (
                     <tr key={mov.id} className="hover:bg-gray-50/60 dark:hover:bg-zinc-800/40 transition">
-                      <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-zinc-400 whitespace-nowrap">
+                      <td className="px-3.5 py-3.5 font-mono text-xs text-gray-500 dark:text-zinc-400 whitespace-nowrap">
                         {formatFecha(mov.fecha_movimiento)}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-gray-900 dark:text-zinc-100">
+                      <td className="px-3.5 py-3.5 font-semibold text-gray-900 dark:text-zinc-100">
                         {mov.producto_nombre || `Producto #${mov.producto}`}
                       </td>
-                      <td className="px-6 py-4">{getTipoBadge(mov.tipo)}</td>
-                      <td className="px-6 py-4 text-right font-extrabold text-sm">
+                      <td className="px-3.5 py-3.5">{getTipoBadge(mov.tipo)}</td>
+                      <td className="px-3.5 py-3.5 text-right font-extrabold text-sm whitespace-nowrap">
                         <span
                           className={
                             mov.tipo === 'INGRESO'
@@ -644,7 +664,7 @@ export default function MovimientosPage() {
                           {formatCantidad(mov.tipo, mov.cantidad)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300 max-w-xs truncate text-xs">
+                      <td className="px-3.5 py-3.5 text-gray-600 dark:text-zinc-300 max-w-xs truncate text-xs">
                         {mov.motivo ? (
                           mov.motivo
                         ) : mov.venta ? (
@@ -655,10 +675,10 @@ export default function MovimientosPage() {
                           '-'
                         )}
                       </td>
-                      <td className="px-6 py-4 text-gray-500 dark:text-zinc-400 text-xs whitespace-nowrap">
+                      <td className="px-3.5 py-3.5 text-gray-500 dark:text-zinc-400 text-xs whitespace-nowrap">
                         {mov.fecha_vencimiento_asociada || '-'}
                       </td>
-                      <td className="px-6 py-4 text-gray-700 dark:text-zinc-300 font-medium text-xs">
+                      <td className="px-3.5 py-3.5 text-gray-700 dark:text-zinc-300 font-medium text-xs">
                         {mov.usuario_username || '-'}
                       </td>
                     </tr>

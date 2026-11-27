@@ -27,6 +27,13 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
   useEffect(() => {
     if (isOpen) {
       const cargarProductos = async () => {
+        setDetalles([]);
+        setSelectedProductoId('');
+        setCantidadInput(1);
+        setMetodoPago('EFECTIVO');
+        setObservaciones('');
+        setErrorGeneral('');
+        setItemError('');
         try {
           setLoadingProductos(true);
           const data = await productosApi.getAll({ activo: true });
@@ -45,15 +52,6 @@ export default function NuevaVentaModal({ isOpen, onClose, onVentaCreada }) {
         }
       };
       cargarProductos();
-
-      // Resetear estado del formulario
-      setDetalles([]);
-      setSelectedProductoId('');
-      setCantidadInput(1);
-      setMetodoPago('EFECTIVO');
-      setObservaciones('');
-      setErrorGeneral('');
-      setItemError('');
     }
   }, [isOpen]);
 

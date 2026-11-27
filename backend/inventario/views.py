@@ -115,3 +115,16 @@ class ProductoViewSet(viewsets.ModelViewSet):
         ).order_by('fecha_vencimiento')
         serializer = ProductoListSerializer(qs, many=True)
         return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except RestrictedError:
+            return Response(
+                {
+                    'detail': 'No se puede eliminar físicamente el producto porque tiene movimientos o ventas asociadas. Desactivelo en su lugar.'
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { productosApi, categoriasApi, proveedoresApi } from '../../api/inventario';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -75,26 +75,29 @@ export default function ProductosPage() {
     };
 
     fetchCategorias();
-    fetchProveedores();
-  }, []);
-
-  // Cargar métricas de alertas activas
-  const loadAlertasCounters = useCallback(async () => {
-    try {
-      const [stockAlerts, vencAlerts] = await Promise.all([
-        productosApi.getAlertasStock(),
-        productosApi.getAlertasVencimiento(),
-      ]);
-      setAlertasStockCount(stockAlerts.length);
-      setAlertasVencCount(vencAlerts.length);
-    } catch (err) {
-      console.error('Error al obtener alertas:', err);
+    if (isAdmin) {
+      fetchProveedores();
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
-    loadAlertasCounters();
-  }, [loadAlertasCounters]);
+    let active = true;
+    Promise.all([
+      productosApi.getAlertasStock(),
+      productosApi.getAlertasVencimiento(),
+    ])
+      .then(([stockAlerts, vencAlerts]) => {
+        if (active) {
+          setAlertasStockCount(stockAlerts.length);
+          setAlertasVencCount(vencAlerts.length);
+        }
+      })
+      .catch((err) => console.error('Error al obtener alertas:', err));
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Cargar productos con filtros
   const loadProductos = useCallback(async () => {
@@ -227,7 +230,7 @@ export default function ProductosPage() {
       cantidad_compra: formData.cantidad_compra ? Number(formData.cantidad_compra) : null,
       descripcion: formData.descripcion.trim(),
       precio_venta: Number(formData.precio_venta) || 0,
-      stock_actual: parseInt(formData.stock_actual, 10) || 0,
+      ...(editingItem ? {} : { stock_actual: parseInt(formData.stock_actual, 10) || 0 }),
       stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
       fecha_vencimiento: formData.fecha_vencimiento || null,
       activo: formData.activo,
@@ -241,7 +244,12 @@ export default function ProductosPage() {
       }
       setIsModalOpen(false);
       loadProductos();
-      loadAlertasCounters();
+      const [stockAlerts, vencAlerts] = await Promise.all([
+        productosApi.getAlertasStock(),
+        productosApi.getAlertasVencimiento(),
+      ]);
+      setAlertasStockCount(stockAlerts.length);
+      setAlertasVencCount(vencAlerts.length);
     } catch (err) {
       console.error('Error al guardar producto:', err);
       const errors = err.response?.data;
@@ -281,7 +289,12 @@ export default function ProductosPage() {
       setIsDeleteOpen(false);
       setDeleteId(null);
       loadProductos();
-      loadAlertasCounters();
+      const [stockAlerts, vencAlerts] = await Promise.all([
+        productosApi.getAlertasStock(),
+        productosApi.getAlertasVencimiento(),
+      ]);
+      setAlertasStockCount(stockAlerts.length);
+      setAlertasVencCount(vencAlerts.length);
     } catch (err) {
       console.error('Error al eliminar producto:', err);
       setDeleteError('No se pudo eliminar el producto. Podría tener movimientos o ventas asociadas.');
@@ -464,19 +477,19 @@ export default function ProductosPage() {
             <table className="w-full text-left text-sm text-gray-600 dark:text-zinc-300">
               <thead className="bg-gray-50/70 dark:bg-zinc-800/50 text-[11px] uppercase font-bold tracking-wider text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
                 <tr>
-                  <th className="px-6 py-3.5">Producto</th>
-                  <th className="px-6 py-3.5">Categoría</th>
-                  <th className="px-6 py-3.5">Precio Venta</th>
-                  <th className="px-6 py-3.5">Stock</th>
-                  <th className="px-6 py-3.5">Vencimiento</th>
-                  <th className="px-6 py-3.5">Estado</th>
-                  <th className="px-6 py-3.5 text-right">Acciones</th>
+                  <th className="px-4 py-3.5">Producto</th>
+                  <th className="px-4 py-3.5">Categoría</th>
+                  <th className="px-4 py-3.5">Precio Venta</th>
+                  <th className="px-4 py-3.5">Stock</th>
+                  <th className="px-4 py-3.5">Vencimiento</th>
+                  <th className="px-4 py-3.5">Estado</th>
+                  <th className="px-4 py-3.5 text-right sticky right-0 bg-gray-50/95 dark:bg-zinc-800/95 backdrop-blur-xs shadow-xs">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/70">
                 {productos.map((prod) => (
                   <tr key={prod.id} className="hover:bg-gray-50/60 dark:hover:bg-zinc-800/40 transition">
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3.5">
                       <div className="font-semibold text-gray-900 dark:text-zinc-100">{prod.nombre}</div>
                       {prod.codigo_barra && (
                         <div className="text-xs text-gray-400 dark:text-zinc-500 font-mono mt-0.5">
@@ -484,16 +497,16 @@ export default function ProductosPage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40 whitespace-nowrap shadow-2xs">
+                    <td className="px-4 py-3.5">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40 whitespace-nowrap shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 mr-1.5 shrink-0"></span>
                         {prod.categoria_nombre || 'Sin categoría'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-zinc-100">
+                    <td className="px-4 py-3.5 font-bold text-gray-900 dark:text-zinc-100 whitespace-nowrap">
                       ${Number(prod.precio_venta).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3.5 whitespace-nowrap">
                       <div className="flex items-center space-x-1.5">
                         <span className="font-extrabold text-gray-900 dark:text-zinc-100">{prod.stock_actual}</span>
                         <span className="text-xs text-gray-400 dark:text-zinc-500">(mín: {prod.stock_minimo})</span>
@@ -508,12 +521,12 @@ export default function ProductosPage() {
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3.5 whitespace-nowrap">
                       {getVencimientoBadge(prod.fecha_vencimiento) || '-'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3.5 whitespace-nowrap">
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
                           prod.activo
                             ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/50'
                             : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700'
@@ -522,10 +535,10 @@ export default function ProductosPage() {
                         {prod.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                    <td className="px-4 py-3.5 text-right space-x-1.5 whitespace-nowrap sticky right-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xs">
                       <button
                         onClick={() => handleOpenDetail(prod)}
-                        className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700/60 shadow-xs transition"
+                        className="inline-flex items-center px-2 py-1 text-xs font-semibold text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700/60 shadow-xs transition"
                         title="Ver detalle completo e historial de compras"
                       >
                         Ver Detalle
@@ -534,13 +547,13 @@ export default function ProductosPage() {
                         <>
                           <button
                             onClick={() => handleOpenEdit(prod)}
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-900/60 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition"
+                            className="inline-flex items-center px-2 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-900/60 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition"
                           >
                             Editar
                           </button>
                           <button
                             onClick={() => handleOpenDelete(prod.id)}
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 border border-rose-200/80 dark:border-rose-900/60 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition"
+                            className="inline-flex items-center px-2 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 border border-rose-200/80 dark:border-rose-900/60 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition"
                           >
                             Eliminar
                           </button>
@@ -791,18 +804,20 @@ export default function ProductosPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
-                  Stock Actual
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={formData.stock_actual}
-                  onChange={(e) => setFormData({ ...formData, stock_actual: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+              {!editingItem && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">
+                    Stock Inicial
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.stock_actual}
+                    onChange={(e) => setFormData({ ...formData, stock_actual: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-400 mb-1">

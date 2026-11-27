@@ -4,6 +4,7 @@ from rest_framework.test import APITestCase
 
 from authentication.models import Usuario
 from .models import Categoria, Producto, ProductoProveedor, Proveedor
+from ventas.models import MovimientoStock
 
 
 class InventarioRolePermissionsTests(APITestCase):
@@ -96,7 +97,12 @@ class InventarioRolePermissionsTests(APITestCase):
                     self.client.patch(detail_url, {'nombre': f'{basename} actualizado'}, format='json').status_code,
                     status.HTTP_200_OK,
                 )
-                self.assertEqual(self.client.delete(detail_url).status_code, status.HTTP_204_NO_CONTENT)
+                delete_status = self.client.delete(detail_url).status_code
+                if basename == 'producto':
+                    self.assertEqual(delete_status, status.HTTP_409_CONFLICT)
+                    self.assertTrue(Producto.objects.filter(id=resource_id).exists())
+                else:
+                    self.assertEqual(delete_status, status.HTTP_204_NO_CONTENT)
 
     def test_product_validation_and_category_integrity_errors_are_client_errors(self):
         self.authenticate(self.admin)
@@ -236,3 +242,33 @@ class InventarioRolePermissionsTests(APITestCase):
         res_cantidad = self.client.post(reverse('producto-list'), solo_cantidad, format='json')
         self.assertEqual(res_cantidad.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('fecha_compra', res_cantidad.data)
+
+    def test_alta_con_stock_inicial_crea_movimiento_ingreso(self):
+        self.authenticate(self.admin)
+        payload = self.producto_payload()
+        payload['stock_actual'] = 10
+
+        response = self.client.post(reverse('producto-list'), payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        producto = Producto.objects.get(id=response.data['id'])
+        self.assertEqual(producto.stock_actual, 10)
+        movimiento = MovimientoStock.objects.get(producto=producto)
+        self.assertEqual(movimiento.tipo, 'INGRESO')
+        self.assertEqual(movimiento.cantidad, 10)
+        self.assertEqual(movimiento.usuario, self.admin)
+        self.assertIn('Stock inicial', movimiento.motivo)
+
+    def test_patch_stock_actual_directo_es_rechazado(self):
+        self.authenticate(self.admin)
+
+        response = self.client.patch(
+            reverse('producto-detail', args=[self.producto.id]),
+            {'stock_actual': 999},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('stock_actual', response.data)
+        self.producto.refresh_from_db()
+        self.assertEqual(self.producto.stock_actual, 2)

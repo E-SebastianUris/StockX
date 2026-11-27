@@ -1,9 +1,11 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Categoria, Proveedor, Producto, ProductoProveedor
+from ventas.models import MovimientoStock
 
 
 class CategoriaSerializer(serializers.ModelSerializer):
@@ -84,10 +86,9 @@ class ProductoDetailSerializer(serializers.ModelSerializer):
             'producto_proveedores',
             'creado_el', 'actualizado_el',
         )
-        read_only_fields = ('id', 'creado_el', 'actualizado_el', 'precio_costo')
+        read_only_fields = ('id', 'creado_el', 'actualizado_el', 'precio_costo', 'stock_actual')
         extra_kwargs = {
             'precio_venta': {'min_value': Decimal('0')},
-            'stock_actual': {'min_value': 0},
             'stock_minimo': {'min_value': 0},
         }
 
@@ -98,6 +99,11 @@ class ProductoDetailSerializer(serializers.ModelSerializer):
         proveedor = attrs.get('proveedor_id')
         fecha_compra = attrs.get('fecha_compra')
         cantidad_compra = attrs.get('cantidad_compra')
+
+        if self.instance is not None and 'stock_actual' in self.initial_data:
+            raise serializers.ValidationError({
+                'stock_actual': 'No se puede modificar el stock directamente desde Productos. Use Movimientos de Stock.'
+            })
 
         if fecha_compra is not None and cantidad_compra is None:
             raise serializers.ValidationError({
@@ -123,11 +129,23 @@ class ProductoDetailSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('La fecha de vencimiento no puede haber pasado.')
         return value
 
+    @transaction.atomic
     def create(self, validated_data):
         proveedor = validated_data.pop('proveedor_id', None)
         fecha_compra = validated_data.pop('fecha_compra', None)
         cantidad_compra = validated_data.pop('cantidad_compra', None)
+
+        stock_inicial = 0
+        if 'stock_actual' in self.initial_data:
+            try:
+                stock_inicial = int(self.initial_data.get('stock_actual', 0))
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({'stock_actual': 'El stock inicial debe ser un entero.'})
+            if stock_inicial < 0:
+                raise serializers.ValidationError({'stock_actual': 'El stock inicial no puede ser negativo.'})
+
         producto = super().create(validated_data)
+
         if proveedor and fecha_compra and cantidad_compra:
             ProductoProveedor.objects.create(
                 producto=producto,
@@ -135,6 +153,19 @@ class ProductoDetailSerializer(serializers.ModelSerializer):
                 cantidad_compra=cantidad_compra,
                 fecha_compra=fecha_compra,
             )
+
+        if stock_inicial > 0:
+            producto.stock_actual = stock_inicial
+            producto.save(update_fields=['stock_actual', 'actualizado_el'])
+            request = self.context.get('request')
+            MovimientoStock.objects.create(
+                producto=producto,
+                tipo='INGRESO',
+                cantidad=stock_inicial,
+                motivo='Stock inicial al crear el producto',
+                usuario=request.user if request and request.user.is_authenticated else None,
+            )
+
         return producto
 
     def update(self, instance, validated_data):

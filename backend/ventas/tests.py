@@ -1,4 +1,6 @@
 from decimal import Decimal
+from datetime import datetime
+from django.utils import timezone
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -366,3 +368,60 @@ class VentasYMovimientosTests(APITestCase):
         self.client.force_authenticate(user=self.admin)
         res = self.client.get(reverse('venta-list'))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_detalle_venta_historica_retrieve_retorna_200(self):
+        """Verifica que el detalle de una venta pasada no sea filtrado por la fecha del día actual."""
+        venta_pasada = Venta.objects.create(
+            vendedor=self.vendedor,
+            total=Decimal('100.00'),
+            metodo_pago='EFECTIVO',
+        )
+        DetalleVenta.objects.create(
+            venta=venta_pasada,
+            producto=self.producto_a,
+            cantidad=1,
+            precio_unitario=Decimal('100.00'),
+            subtotal=Decimal('100.00'),
+        )
+        # Asignar fecha en el pasado
+        Venta.objects.filter(pk=venta_pasada.pk).update(
+            fecha_venta=timezone.make_aware(datetime(2020, 1, 15, 10, 0, 0))
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        url = reverse('venta-detail', kwargs={'pk': venta_pasada.pk})
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['id'], venta_pasada.id)
+        self.assertEqual(len(res.data['detalles']), 1)
+        self.assertEqual(res.data['detalles'][0]['producto'], self.producto_a.id)
+
+    def test_filtro_ventas_historico_retorna_todas_las_ventas(self):
+        """Verifica que el parámetro historico=true devuelva ventas independientemente de su fecha."""
+        venta_pasada = Venta.objects.create(
+            vendedor=self.vendedor,
+            total=Decimal('50.00'),
+            metodo_pago='EFECTIVO',
+        )
+        Venta.objects.filter(pk=venta_pasada.pk).update(
+            fecha_venta=timezone.make_aware(datetime(2020, 1, 15, 10, 0, 0))
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(reverse('venta-list'), {'historico': 'true'})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ids = [v['id'] for v in res.data]
+        self.assertIn(venta_pasada.id, ids)
+
+    def test_filtro_movimientos_rechaza_fecha_invalida_y_rango_invertido(self):
+        self.client.force_authenticate(user=self.admin)
+        url = reverse('movimientostock-list')
+
+        res_fecha_invalida = self.client.get(url, {'fecha_desde': '15-01-2020'})
+        self.assertEqual(res_fecha_invalida.status_code, status.HTTP_400_BAD_REQUEST)
+
+        res_rango_invertido = self.client.get(url, {
+            'fecha_desde': '2026-11-25',
+            'fecha_hasta': '2026-11-20',
+        })
+        self.assertEqual(res_rango_invertido.status_code, status.HTTP_400_BAD_REQUEST)

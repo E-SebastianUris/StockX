@@ -290,6 +290,91 @@ class DashboardTests(APITestCase):
         self.assertEqual(Decimal(str(resumen['total_ventas_recaudado'])), Decimal('100.00'))
         self.assertEqual(resumen['cantidad_ventas'], 1)
 
+    def test_ranking_y_rotacion_respetan_fecha_y_proveedor(self):
+        self.client.force_authenticate(user=self.admin)
+        proveedor = Proveedor.objects.create(nombre='Proveedor del producto top')
+        ProductoProveedor.objects.create(
+            producto=self.prod_top,
+            proveedor=proveedor,
+            cantidad_compra=50,
+            fecha_compra=timezone.now().date(),
+        )
+        venta_pasada = Venta.objects.create(
+            vendedor=self.admin,
+            total=Decimal('1050.00'),
+            metodo_pago='EFECTIVO',
+        )
+        DetalleVenta.objects.create(
+            venta=venta_pasada,
+            producto=self.prod_top,
+            cantidad=7,
+            precio_unitario=Decimal('150.00'),
+            subtotal=Decimal('1050.00'),
+        )
+        Venta.objects.filter(pk=venta_pasada.pk).update(
+            fecha_venta=timezone.now() - timedelta(days=30)
+        )
+
+        params = {
+            'fecha_desde': timezone.now().date().isoformat(),
+            'fecha_hasta': timezone.now().date().isoformat(),
+            'proveedor': proveedor.id,
+        }
+        response = self.client.get(self.url_dashboard, params)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        mas_vendidos = response.data['productos_mas_vendidos']
+        self.assertEqual([item['producto_id'] for item in mas_vendidos], [self.prod_top.id])
+        self.assertEqual(mas_vendidos[0]['total_unidades_vendidas'], 25)
+        self.assertEqual(Decimal(str(mas_vendidos[0]['total_recaudado'])), Decimal('3750.00'))
+
+        rotacion = response.data['rotacion_productos']
+        self.assertEqual([item['producto_id'] for item in rotacion], [self.prod_top.id])
+        self.assertEqual(rotacion[0]['total_salidas'], 25)
+        self.assertEqual(rotacion[0]['total_ingresos'], 50)
+
+    def test_dashboard_rechaza_filtros_conflictivos_y_endpoints_individuales_invalidos(self):
+        self.client.force_authenticate(user=self.admin)
+
+        historico_con_fecha = self.client.get(self.url_dashboard, {
+            'historico': 'true',
+            'fecha_desde': timezone.now().date().isoformat(),
+        })
+        self.assertEqual(historico_con_fecha.status_code, status.HTTP_400_BAD_REQUEST)
+
+        fecha_invalida = self.client.get(self.url_mas_vendidos, {'fecha_desde': 'ayer'})
+        self.assertEqual(fecha_invalida.status_code, status.HTTP_400_BAD_REQUEST)
+
+        rango_invertido = self.client.get(self.url_rotacion, {
+            'fecha_desde': '2026-11-25',
+            'fecha_hasta': '2026-11-20',
+        })
+        self.assertEqual(rango_invertido.status_code, status.HTTP_400_BAD_REQUEST)
+
+        mes_y_desde = self.client.get(self.url_dashboard, {
+            'mes': '2026-11',
+            'fecha_desde': '2026-11-20',
+        })
+        self.assertEqual(mes_y_desde.status_code, status.HTTP_400_BAD_REQUEST)
+
+        mes_y_hasta = self.client.get(self.url_dashboard, {
+            'mes': '2026-11',
+            'fecha_hasta': '2026-11-27',
+        })
+        self.assertEqual(mes_y_hasta.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_limites_dashboard_validos_e_invalidos(self):
+        self.client.force_authenticate(user=self.admin)
+
+        for endpoint in (self.url_mas_vendidos, self.url_rotacion, self.url_dashboard):
+            for invalido in ('0', '-1', 'abc', '101'):
+                response = self.client.get(endpoint, {'limit': invalido})
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        for endpoint in (self.url_mas_vendidos, self.url_rotacion, self.url_dashboard):
+            response = self.client.get(endpoint, {'limit': '100'})
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
 
 class DashboardCasosAdicionalesTests(APITestCase):
     def setUp(self):
@@ -446,10 +531,9 @@ class DashboardCasosAdicionalesTests(APITestCase):
         self.assertEqual(res_limit_2.status_code, status.HTTP_200_OK)
         self.assertEqual(len(res_limit_2.data), 2)
 
-        # E7: limit=abc debe aplicar fallback por defecto a 10 (retorna los 5 existentes)
+        # E7: texto inválido debe rechazarse con HTTP 400
         res_limit_invalido = self.client.get(reverse('dashboard:mas-vendidos'), {'limit': 'abc'})
-        self.assertEqual(res_limit_invalido.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(res_limit_invalido.data), 5)
+        self.assertEqual(res_limit_invalido.status_code, status.HTTP_400_BAD_REQUEST)
 
         # También verificar limit=2 en la vista consolidada de métricas
         res_metricas_limit = self.client.get(reverse('dashboard:metricas'), {'limit': 2})
@@ -667,6 +751,19 @@ class DashboardCasosAdicionalesTests(APITestCase):
         res_con_limit = self.client.get(reverse('dashboard:rotacion'), {'limit': 3})
         self.assertEqual(res_con_limit.status_code, status.HTTP_200_OK)
         self.assertEqual(len(res_con_limit.data), 3)
+
+    def test_dashboard_metricas_filtros_mas_vendidos_y_rotacion(self):
+        """Verifica que el endpoint consolidado del dashboard filtre más vendidos y rotación por período."""
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(reverse('dashboard:metricas'), {
+            'fecha_desde': '2010-01-01',
+            'fecha_hasta': '2010-01-02',
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # En ese rango antiguo de 2010 no hay ventas registradas
+        for prod in res.data['productos_mas_vendidos']:
+            self.assertEqual(prod['total_unidades_vendidas'], 0)
+            self.assertEqual(prod['total_recaudado'], Decimal('0.00'))
 
     def test_e17_rotacion_alta_por_umbral_absoluto_de_salidas(self):
         """E17: Clasificación ALTA por umbral absoluto de 20 salidas aun con ratio bajo (salidas >= 20 con stock alto)."""
