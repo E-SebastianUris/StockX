@@ -223,7 +223,7 @@ def get_alertas_activas():
     }
 
 
-def get_resumen_general(alertas, fecha_desde=None, fecha_hasta=None, mes=None, proveedor=None):
+def get_resumen_general(alertas, fecha_desde=None, fecha_hasta=None, mes=None, proveedor=None, historico=False):
     """Métricas generales y recaudación filtrada de ventas."""
     hoy = timezone.now().date()
 
@@ -251,6 +251,9 @@ def get_resumen_general(alertas, fecha_desde=None, fecha_hasta=None, mes=None, p
         if inicio_mes and fin_mes:
             ventas = ventas.filter(fecha_venta__date__gte=inicio_mes, fecha_venta__date__lte=fin_mes)
             detalles = detalles.filter(venta__fecha_venta__date__gte=inicio_mes, venta__fecha_venta__date__lte=fin_mes)
+    elif historico:
+        # Abarca todo el histórico de ventas sin acotar por fecha
+        pass
     else:
         ventas = ventas.filter(fecha_venta__date=hoy)
         detalles = detalles.filter(venta__fecha_venta__date=hoy)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import { dashboardApi } from '../../api/dashboard';
@@ -10,6 +10,37 @@ const formatCurrency = (amount) => {
     currency: 'ARS',
     minimumFractionDigits: 2,
   }).format(amount || 0);
+};
+
+// Helpers de fecha local para el ordenador
+const getFechaLocal = (d = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const getFechaAyer = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return getFechaLocal(d);
+};
+
+const getFechaDiasAtras = (dias) => {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  return getFechaLocal(d);
+};
+
+const getFechaInicioMes = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+const formatFechaDisplay = (yyyyMmDd) => {
+  if (!yyyyMmDd) return '';
+  const [y, m, d] = yyyyMmDd.split('-');
+  return `${d}/${m}/${y}`;
 };
 
 export default function DashboardPage() {
@@ -25,12 +56,53 @@ export default function DashboardPage() {
   // Selector de pestaña para alertas
   const [alertaTab, setAlertaTab] = useState('stock'); // 'stock' | 'vencimiento'
 
-  // Filtros de recaudación
-  const [mesRecaudacion, setMesRecaudacion] = useState('');
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
+  // Filtros de recaudación (por defecto fecha del día según el ordenador)
+  const hoyDefecto = useMemo(() => getFechaLocal(), []);
+  const [fechaDesde, setFechaDesde] = useState(hoyDefecto);
+  const [fechaHasta, setFechaHasta] = useState(hoyDefecto);
   const [proveedorId, setProveedorId] = useState('');
   const [proveedores, setProveedores] = useState([]);
+
+  // Detección de preset activo
+  const presetActivo = useMemo(() => {
+    const hoy = getFechaLocal();
+    if (fechaDesde === hoy && fechaHasta === hoy) return 'HOY';
+    if (fechaDesde === getFechaAyer() && fechaHasta === getFechaAyer()) return 'AYER';
+    if (fechaDesde === getFechaDiasAtras(6) && fechaHasta === hoy) return '7_DIAS';
+    if (fechaDesde === getFechaInicioMes() && fechaHasta === hoy) return 'ESTE_MES';
+    if (!fechaDesde && !fechaHasta) return 'TODO';
+    return 'CUSTOM';
+  }, [fechaDesde, fechaHasta]);
+
+  const aplicarPreset = (preset) => {
+    const hoy = getFechaLocal();
+    switch (preset) {
+      case 'HOY':
+        setFechaDesde(hoy);
+        setFechaHasta(hoy);
+        break;
+      case 'AYER': {
+        const ayer = getFechaAyer();
+        setFechaDesde(ayer);
+        setFechaHasta(ayer);
+        break;
+      }
+      case '7_DIAS':
+        setFechaDesde(getFechaDiasAtras(6));
+        setFechaHasta(hoy);
+        break;
+      case 'ESTE_MES':
+        setFechaDesde(getFechaInicioMes());
+        setFechaHasta(hoy);
+        break;
+      case 'TODO':
+        setFechaDesde('');
+        setFechaHasta('');
+        break;
+      default:
+        break;
+    }
+  };
 
   const fetchDashboardData = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -44,8 +116,8 @@ export default function DashboardPage() {
       if (fechaDesde || fechaHasta) {
         if (fechaDesde) params.fecha_desde = fechaDesde;
         if (fechaHasta) params.fecha_hasta = fechaHasta;
-      } else if (mesRecaudacion) {
-        params.mes = mesRecaudacion;
+      } else {
+        params.historico = 'true';
       }
 
       const response = await dashboardApi.getMetrics(params);
@@ -60,7 +132,7 @@ export default function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [proveedorId, fechaDesde, fechaHasta, mesRecaudacion]);
+  }, [proveedorId, fechaDesde, fechaHasta]);
 
   useEffect(() => {
     let ignore = false;
@@ -69,8 +141,8 @@ export default function DashboardPage() {
     if (fechaDesde || fechaHasta) {
       if (fechaDesde) params.fecha_desde = fechaDesde;
       if (fechaHasta) params.fecha_hasta = fechaHasta;
-    } else if (mesRecaudacion) {
-      params.mes = mesRecaudacion;
+    } else {
+      params.historico = 'true';
     }
 
     dashboardApi
@@ -94,7 +166,7 @@ export default function DashboardPage() {
     return () => {
       ignore = true;
     };
-  }, [proveedorId, fechaDesde, fechaHasta, mesRecaudacion]);
+  }, [proveedorId, fechaDesde, fechaHasta]);
 
   // Cargar proveedores activos
   useEffect(() => {
@@ -228,54 +300,174 @@ export default function DashboardPage() {
         </button>
       </PageHeader>
 
-      {/* Filtros de Recaudación */}
-      <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-gray-200/80 dark:border-zinc-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Mes</label>
-          <input
-            type="month"
-            value={mesRecaudacion}
-            disabled={Boolean(fechaDesde || fechaHasta)}
-            onChange={(e) => setMesRecaudacion(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 disabled:opacity-50"
-          />
+      {/* Barra de Filtros y Selector de Fecha Tipo Calendario */}
+      <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-gray-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
+        {/* Fila superior: Presets rápidos + Indicador del período activo */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-zinc-800/70">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-zinc-500 mr-1.5 flex items-center">
+              <svg className="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Período:
+            </span>
+            <button
+              type="button"
+              onClick={() => aplicarPreset('HOY')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                presetActivo === 'HOY'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              Hoy (Predeterminado)
+            </button>
+            <button
+              type="button"
+              onClick={() => aplicarPreset('AYER')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                presetActivo === 'AYER'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              Ayer
+            </button>
+            <button
+              type="button"
+              onClick={() => aplicarPreset('7_DIAS')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                presetActivo === '7_DIAS'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              Últimos 7 días
+            </button>
+            <button
+              type="button"
+              onClick={() => aplicarPreset('ESTE_MES')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                presetActivo === 'ESTE_MES'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              Este mes
+            </button>
+            <button
+              type="button"
+              onClick={() => aplicarPreset('TODO')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                presetActivo === 'TODO'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              Histórico
+            </button>
+          </div>
+
+          {/* Resumen dinámico del filtro activo */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40 font-medium">
+              <svg className="w-3.5 h-3.5 mr-1 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {fechaDesde && fechaHasta && fechaDesde === fechaHasta
+                ? `Mostrando ventas del día: ${formatFechaDisplay(fechaDesde)}`
+                : fechaDesde && fechaHasta
+                ? `Rango: ${formatFechaDisplay(fechaDesde)} al ${formatFechaDisplay(fechaHasta)}`
+                : fechaDesde
+                ? `Desde: ${formatFechaDisplay(fechaDesde)}`
+                : fechaHasta
+                ? `Hasta: ${formatFechaDisplay(fechaHasta)}`
+                : 'Mostrando todo el historial'}
+            </span>
+            {proveedorId && (
+              <span className="inline-flex items-center px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/40 font-medium">
+                Proveedor: {proveedores.find((p) => String(p.id) === String(proveedorId))?.nombre || `#${proveedorId}`}
+                <button
+                  type="button"
+                  onClick={() => setProveedorId('')}
+                  className="ml-1.5 text-amber-500 hover:text-amber-700 dark:hover:text-amber-200 cursor-pointer"
+                  title="Quitar filtro de proveedor"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </div>
         </div>
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Fecha desde</label>
-          <input
-            type="date"
-            value={fechaDesde}
-            onChange={(e) => {
-              setFechaDesde(e.target.value);
-              if (e.target.value) setMesRecaudacion('');
-            }}
-            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Fecha hasta</label>
-          <input
-            type="date"
-            value={fechaHasta}
-            onChange={(e) => {
-              setFechaHasta(e.target.value);
-              if (e.target.value) setMesRecaudacion('');
-            }}
-            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">Proveedor</label>
-          <select
-            value={proveedorId}
-            onChange={(e) => setProveedorId(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100"
-          >
-            <option value="">Todos los proveedores</option>
-            {proveedores.map((proveedor) => (
-              <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
-            ))}
-          </select>
+
+        {/* Fila inferior: Mini-calendarios y Filtro de Proveedor */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+          {/* Fecha Desde */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1 flex items-center justify-between">
+              <span>Fecha desde</span>
+              {fechaDesde !== hoyDefecto && (
+                <button
+                  type="button"
+                  onClick={() => setFechaDesde(hoyDefecto)}
+                  className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline capitalize cursor-pointer font-medium"
+                >
+                  Ir a hoy
+                </button>
+              )}
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={fechaDesde}
+                onChange={(e) => setFechaDesde(e.target.value)}
+                className="w-full pl-3 pr-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none transition cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Fecha Hasta */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1 flex items-center justify-between">
+              <span>Fecha hasta</span>
+              {fechaHasta !== hoyDefecto && (
+                <button
+                  type="button"
+                  onClick={() => setFechaHasta(hoyDefecto)}
+                  className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline capitalize cursor-pointer font-medium"
+                >
+                  Ir a hoy
+                </button>
+              )}
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={fechaHasta}
+                onChange={(e) => setFechaHasta(e.target.value)}
+                className="w-full pl-3 pr-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none transition cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Filtro Proveedor */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">
+              Proveedor (Facturación Parcial)
+            </label>
+            <select
+              value={proveedorId}
+              onChange={(e) => setProveedorId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:outline-none transition cursor-pointer"
+            >
+              <option value="">Todos los proveedores</option>
+              {proveedores.map((proveedor) => (
+                <option key={proveedor.id} value={proveedor.id}>
+                  {proveedor.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

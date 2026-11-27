@@ -39,6 +39,8 @@ class DashboardMetricsView(APIView):
         fecha_hasta = request.query_params.get('fecha_hasta')
         mes = request.query_params.get('mes')
         proveedor = request.query_params.get('proveedor')
+        historico = request.query_params.get('historico')
+        es_historico = historico is not None and str(historico).lower() in ['true', '1', 't', 'si', 'yes']
 
         try:
             if fecha_desde:
@@ -84,6 +86,7 @@ class DashboardMetricsView(APIView):
             fecha_hasta=fecha_hasta,
             mes=None if (fecha_desde or fecha_hasta) else mes,
             proveedor=proveedor,
+            historico=es_historico,
         )
 
         payload = {

@@ -390,29 +390,37 @@ export default function ProductosPage() {
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
-      <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl shadow-xs border border-gray-200/80 dark:border-zinc-800/80 flex flex-col md:flex-row gap-3">
+      <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl shadow-xs border border-gray-200/80 dark:border-zinc-800/80 grid grid-cols-1 md:grid-cols-12 gap-3">
         {/* Search */}
-        <div className="relative flex-1">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o código de barra..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/60 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
-          />
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="w-4 h-4 text-gray-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+        <div className="md:col-span-6">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">
+            Buscar Producto
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o código de barra..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm bg-gray-50/50 dark:bg-zinc-800/60 text-gray-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-800 focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
+            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="w-4 h-4 text-gray-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
           </div>
         </div>
 
         {/* Categoría Filter */}
-        <div className="w-full md:w-56">
+        <div className="md:col-span-3">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">
+            Categoría
+          </label>
           <select
             value={selectedCategoria}
             onChange={(e) => setSelectedCategoria(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/60 text-gray-900 dark:text-zinc-100"
+            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/60 text-gray-900 dark:text-zinc-100 cursor-pointer"
           >
             <option value="">Todas las categorías</option>
             {categorias.map((cat) => (
@@ -424,11 +432,14 @@ export default function ProductosPage() {
         </div>
 
         {/* Alerta Filter */}
-        <div className="w-full md:w-48">
+        <div className="md:col-span-3">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-1">
+            Estado de Stock
+          </label>
           <select
             value={alertaFiltro}
             onChange={(e) => setAlertaFiltro(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/60 text-gray-900 dark:text-zinc-100"
+            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50/50 dark:bg-zinc-800/60 text-gray-900 dark:text-zinc-100 cursor-pointer"
           >
             <option value="">Todos los estados</option>
             <option value="alerta_stock">⚠️ Stock Bajo</option>
@@ -474,7 +485,8 @@ export default function ProductosPage() {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 rounded-lg text-xs bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 font-medium border border-gray-200/60 dark:border-zinc-700/60">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40 whitespace-nowrap shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 mr-1.5 shrink-0"></span>
                         {prod.categoria_nombre || 'Sin categoría'}
                       </span>
                     </td>
@@ -560,8 +572,13 @@ export default function ProductosPage() {
             {/* Resumen */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 bg-gray-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-gray-200/80 dark:border-zinc-700/60 text-sm">
               <div>
-                <p className="text-[11px] text-gray-500 dark:text-zinc-400 uppercase font-bold tracking-wider">Categoría</p>
-                <p className="font-semibold text-gray-900 dark:text-zinc-100 mt-0.5">{detailItem.categoria?.nombre || '-'}</p>
+                <p className="text-[11px] text-gray-500 dark:text-zinc-400 uppercase font-bold tracking-wider mb-1">Categoría</p>
+                <div>
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40 whitespace-nowrap shadow-2xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 mr-1.5 shrink-0"></span>
+                    {detailItem.categoria?.nombre || detailItem.categoria_nombre || '-'}
+                  </span>
+                </div>
               </div>
               <div>
                 <p className="text-[11px] text-gray-500 dark:text-zinc-400 uppercase font-bold tracking-wider">Código Barra</p>
